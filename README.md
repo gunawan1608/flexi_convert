@@ -5,9 +5,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/your-username/flexiconvert/actions"><img src="https://img.shields.io/github/actions/workflow/status/your-username/flexiconvert/laravel.yml" alt="Build Status"></a>
-  <a href="https://github.com/your-username/flexiconvert"><img src="https://img.shields.io/github/stars/your-username/flexiconvert" alt="GitHub Stars"></a>
-  <a href="https://github.com/your-username/flexiconvert"><img src="https://img.shields.io/github/license/your-username/flexiconvert" alt="License"></a>
+<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
 ---
