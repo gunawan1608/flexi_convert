@@ -12,17 +12,17 @@ const Footer = () => {
                                 FlexiConvert
                             </h3>
                             <p className="text-gray-600 text-lg leading-relaxed max-w-md">
-                                Transform your files effortlessly with our professional conversion platform. 
+                                Transform your files effortlessly with our professional conversion platform.
                                 Fast, secure, and reliable file processing for all your needs.
                             </p>
                         </div>
-                        
+
                         {/* Contact Options */}
                         <div className="space-y-4">
                             <h4 className="text-xl font-semibold text-gray-900 mb-4">Get in Touch</h4>
                             <div className="flex flex-col space-y-3">
-                                <a 
-                                    href="mailto:tamagunawan08@gmail.com" 
+                                <a
+                                    href="mailto:tamagunawan08@gmail.com"
                                     className="flex items-center space-x-4 text-gray-700 hover:text-blue-600 transition-colors duration-200 group"
                                 >
                                     <div className="bg-blue-100 p-3 rounded-lg group-hover:bg-blue-200 transition-colors duration-200">
@@ -33,10 +33,10 @@ const Footer = () => {
                                     </div>
                                     <span className="font-medium">tamagunawan08@gmail.com</span>
                                 </a>
-                                
-                                <a 
-                                    href="https://instagram.com/gm_pratama16" 
-                                    target="_blank" 
+
+                                <a
+                                    href="https://instagram.com/gm_pratama16"
+                                    target="_blank"
                                     rel="noopener noreferrer"
                                     className="flex items-center space-x-4 text-gray-700 hover:text-pink-600 transition-colors duration-200 group"
                                 >
@@ -47,10 +47,10 @@ const Footer = () => {
                                     </div>
                                     <span className="font-medium">@gm_pratama16</span>
                                 </a>
-                                
-                                <a 
-                                    href="https://github.com/gunawan1608" 
-                                    target="_blank" 
+
+                                <a
+                                    href="https://github.com/gunawan1608"
+                                    target="_blank"
                                     rel="noopener noreferrer"
                                     className="flex items-center space-x-4 text-gray-700 hover:text-gray-900 transition-colors duration-200 group"
                                 >
@@ -69,38 +69,27 @@ const Footer = () => {
                     <div className="space-y-6">
                         <div className="space-y-4 text-center">
                             <h4 className="text-xl font-semibold text-gray-900 mb-4">About Developer</h4>
-                            
+
                             <div className="mb-4">
                                 <h5 className="text-lg font-bold text-blue-600 mb-2">Gunawan Madia Pratama</h5>
-                                <p className="text-gray-600 font-medium mb-3">Web Developer & Game Developer</p>
                             </div>
-                            
+
                             <p className="text-gray-600 text-sm leading-relaxed mb-4">
-                                I am a student at SMKN 1 Jakarta majoring in Software and Game Development Engineering. 
-                                This conversion platform is a project I developed to help users transform their files 
+                                I am a student at SMKN 1 Jakarta majoring in Software and Game Development Engineering.
+                                This conversion platform is a project I developed to help users transform their files
                                 with an intuitive and modern interface.
                             </p>
-                            
+
                             <p className="text-gray-600 text-sm leading-relaxed mb-4">
-                                I have a passion for creating user-friendly technology solutions that can improve 
-                                digital workflow efficiency. Through this project, I hope to contribute to making 
+                                I have a passion for creating user-friendly technology solutions that can improve
+                                digital workflow efficiency. Through this project, I hope to contribute to making
                                 file conversion more accessible and reliable.
                             </p>
-                            
-                            <div className="flex flex-wrap gap-2 mb-4 justify-center">
-                                <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">PHP</span>
-                                <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">JavaScript</span>
-                                <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">React</span>
-                                <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">HTML5</span>
-                                <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">CSS3</span>
-                                <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">MySQL</span>
-                                <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">Godot</span>
-                            </div>
                         </div>
-                        
+
                         <div className="text-center">
-                            <a 
-                                href="/register" 
+                            <a
+                                href="/register"
                                 className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors duration-200 shadow-md hover:shadow-lg"
                             >
                                 Get Started Today
