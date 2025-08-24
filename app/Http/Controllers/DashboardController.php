@@ -13,9 +13,12 @@ class DashboardController extends Controller
     {
         $user = Auth::user();
         
+        // Show email verification notice if not verified, but allow access
+        $showEmailNotice = !$user->hasVerifiedEmail();
+        
         $stats = [
-            'total_conversions' => $user->total_conversions,
-            'storage_used' => $user->storage_used_human,
+            'total_conversions' => $user->total_conversions ?? 0,
+            'storage_used' => $user->storage_used_human ?? '0 B',
             'recent_conversions' => $user->conversions()
                 ->latest()
                 ->limit(5)
@@ -24,6 +27,7 @@ class DashboardController extends Controller
                 ->where('status', 'completed')
                 ->whereDate('completed_at', today())
                 ->count(),
+            'show_email_notice' => $showEmailNotice,
         ];
 
         return view('dashboard.index', compact('stats'));

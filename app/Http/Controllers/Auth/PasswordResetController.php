@@ -21,20 +21,36 @@ class PasswordResetController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $request->validate(['email' => 'required|email']);
+        $request->validate([
+            'email' => 'required|email'
+        ], [
+            'email.required' => 'Email wajib diisi.',
+            'email.email' => 'Format email tidak valid.'
+        ]);
 
         $status = Password::sendResetLink(
             $request->only('email')
         );
 
-        return $status === Password::RESET_LINK_SENT
-                    ? back()->with(['status' => __($status)])
-                    : back()->withErrors(['email' => __($status)]);
+        if ($status === Password::RESET_LINK_SENT) {
+            return back()->with([
+                'status' => 'Link reset password telah dikirim ke email Anda. Silakan periksa inbox atau folder spam.'
+            ]);
+        }
+
+        return back()->withErrors([
+            'email' => $status === Password::INVALID_USER 
+                ? 'Email tidak ditemukan dalam sistem kami.'
+                : 'Terjadi kesalahan saat mengirim link reset password. Silakan coba lagi.'
+        ]);
     }
 
-    public function edit(string $token): View
+    public function edit(Request $request, string $token): View
     {
-        return view('auth.reset-password', ['token' => $token]);
+        return view('auth.reset-password', [
+            'token' => $token,
+            'email' => $request->email
+        ]);
     }
 
     public function update(Request $request): RedirectResponse
@@ -43,6 +59,12 @@ class PasswordResetController extends Controller
             'token' => 'required',
             'email' => 'required|email',
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+        ], [
+            'token.required' => 'Token reset password tidak valid.',
+            'email.required' => 'Email wajib diisi.',
+            'email.email' => 'Format email tidak valid.',
+            'password.required' => 'Password baru wajib diisi.',
+            'password.confirmed' => 'Konfirmasi password tidak cocok.',
         ]);
 
         $status = Password::reset(
@@ -58,8 +80,16 @@ class PasswordResetController extends Controller
             }
         );
 
-        return $status === Password::PASSWORD_RESET
-                    ? redirect()->route('login')->with('status', __($status))
-                    : back()->withErrors(['email' => [__($status)]]);
+        if ($status === Password::PASSWORD_RESET) {
+            return redirect()->route('login')->with('status', 'Password berhasil direset. Silakan login dengan password baru Anda.');
+        }
+
+        return back()->withErrors([
+            'email' => $status === Password::INVALID_TOKEN 
+                ? 'Token reset password tidak valid atau sudah kadaluarsa.'
+                : ($status === Password::INVALID_USER 
+                    ? 'Email tidak ditemukan dalam sistem kami.'
+                    : 'Terjadi kesalahan saat mereset password. Silakan coba lagi.')
+        ]);
     }
 }

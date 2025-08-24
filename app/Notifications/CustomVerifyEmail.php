@@ -7,9 +7,17 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 
-class CustomVerifyEmail extends VerifyEmail implements ShouldQueue
+class CustomVerifyEmail extends VerifyEmail
 {
     use Queueable;
+
+    /**
+     * Create a new notification instance.
+     */
+    public function __construct()
+    {
+        //
+    }
 
     /**
      * Get the mail representation of the notification.
