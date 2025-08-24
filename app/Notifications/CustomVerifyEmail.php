@@ -24,7 +24,6 @@ class CustomVerifyEmail extends VerifyEmail implements ShouldQueue
             ->line('Terima kasih telah mendaftar di FlexiConvert.')
             ->line('Silakan klik tombol di bawah ini untuk memverifikasi alamat email Anda.')
             ->action('Verifikasi Email', $verificationUrl)
-            ->actionTarget('_self')
             ->line('Jika Anda tidak membuat akun, tidak ada tindakan lebih lanjut yang diperlukan.')
             ->line('Link verifikasi ini akan kedaluwarsa dalam 60 menit.')
             ->salutation('Salam, Tim FlexiConvert');
