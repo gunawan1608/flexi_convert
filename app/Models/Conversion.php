@@ -13,12 +13,19 @@ class Conversion extends Model
     protected $fillable = [
         'user_id',
         'original_filename',
+        'filename',
+        'stored_filename',
+        'converted_filename',
         'original_extension',
         'target_extension',
+        'target_format',
         'file_path',
         'converted_file_path',
         'file_size',
         'status',
+        'conversion_type',
+        'settings',
+        'progress',
         'error_message',
         'started_at',
         'completed_at',
@@ -27,6 +34,7 @@ class Conversion extends Model
     protected $casts = [
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'settings' => 'array',
     ];
 
     public function user(): BelongsTo

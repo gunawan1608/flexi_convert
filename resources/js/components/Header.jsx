@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
 
+// Check if user is authenticated
+const isAuthenticated = () => {
+    return document.querySelector('meta[name="user-authenticated"]')?.getAttribute('content') === 'true';
+};
+
 const Header = () => {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [dropdownStates, setDropdownStates] = useState({
@@ -179,12 +184,20 @@ const Header = () => {
 
                     {/* Auth Links */}
                     <div className="hidden md:flex items-center space-x-4">
-                        <a href="/login" className="text-gray-700 hover:text-blue-600 text-sm font-medium transition-colors duration-200">
-                            Login
-                        </a>
-                        <a href="/register" className="bg-blue-600 text-white px-6 py-2 rounded-full text-sm font-medium hover:bg-blue-700 transition-all duration-200 hover:scale-105 transform">
-                            Sign up free
-                        </a>
+                        {isAuthenticated() ? (
+                            <a href="/dashboard" className="bg-blue-600 text-white px-6 py-2 rounded-full text-sm font-medium hover:bg-blue-700 transition-all duration-200 hover:scale-105 transform">
+                                Dashboard
+                            </a>
+                        ) : (
+                            <>
+                                <a href="/login" className="text-gray-700 hover:text-blue-600 text-sm font-medium transition-colors duration-200">
+                                    Login
+                                </a>
+                                <a href="/register" className="bg-blue-600 text-white px-6 py-2 rounded-full text-sm font-medium hover:bg-blue-700 transition-all duration-200 hover:scale-105 transform">
+                                    Sign up free
+                                </a>
+                            </>
+                        )}
                     </div>
 
                     {/* Mobile menu button */}
@@ -220,12 +233,20 @@ const Header = () => {
                         : 'max-h-0 opacity-0 overflow-hidden'
                 }`}>
                     <div className="px-2 pt-2 pb-3 space-y-1 bg-white border-t border-gray-200">
-                        <a href="/login" className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium transition-colors duration-200">
-                            Login
-                        </a>
-                        <a href="/register" className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium transition-colors duration-200">
-                            Sign up
-                        </a>
+                        {isAuthenticated() ? (
+                            <a href="/dashboard" className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium transition-colors duration-200">
+                                Dashboard
+                            </a>
+                        ) : (
+                            <>
+                                <a href="/login" className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium transition-colors duration-200">
+                                    Login
+                                </a>
+                                <a href="/register" className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium transition-colors duration-200">
+                                    Sign up
+                                </a>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

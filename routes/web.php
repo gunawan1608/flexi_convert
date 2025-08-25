@@ -55,10 +55,19 @@ Route::middleware(['auth'])->group(function () {
     
     // Conversion tool routes (protected)
     Route::prefix('tools')->name('tools.')->group(function () {
-        Route::get('/documents', function () { return view('tools.documents'); })->name('documents');
+        Route::get('/documents', [App\Http\Controllers\DocumentController::class, 'index'])->name('documents');
         Route::get('/images', function () { return view('tools.images'); })->name('images');
         Route::get('/audio', function () { return view('tools.audio'); })->name('audio');
         Route::get('/video', function () { return view('tools.video'); })->name('video');
+    });
+    
+    // Document conversion API routes
+    Route::prefix('api/documents')->name('documents.')->group(function () {
+        Route::post('/upload', [App\Http\Controllers\DocumentController::class, 'upload'])->name('upload');
+        Route::post('/convert', [App\Http\Controllers\DocumentController::class, 'convert'])->name('convert');
+        Route::get('/status/{id}', [App\Http\Controllers\DocumentController::class, 'status'])->name('status');
+        Route::get('/download/{id}', [App\Http\Controllers\DocumentController::class, 'download'])->name('download');
+        Route::get('/history', [App\Http\Controllers\DocumentController::class, 'history'])->name('history');
     });
     
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
