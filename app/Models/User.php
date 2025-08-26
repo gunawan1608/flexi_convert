@@ -40,34 +40,51 @@ class User extends Authenticatable implements MustVerifyEmail
     ];
 
     /**
-     * Get the attributes that should be cast.
+     * The attributes that should be cast.
      *
-     * @return array<string, string>
+     * @var array<string, string>
      */
-    protected function casts(): array
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+        'last_conversion_at' => 'datetime',
+    ];
+
+    public function pdfProcessings(): HasMany
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-            'last_conversion_at' => 'datetime',
-        ];
+        return $this->hasMany(PdfProcessing::class);
     }
 
-    public function conversions(): HasMany
+    public function getTotalProcessingsAttribute()
     {
-        return $this->hasMany(Conversion::class);
+        return $this->pdfProcessings()->count();
+    }
+
+    public function getCompletedProcessingsAttribute()
+    {
+        return $this->pdfProcessings()->completed()->count();
+    }
+
+    public function getTodayProcessingsAttribute()
+    {
+        return $this->pdfProcessings()->today()->count();
+    }
+
+    public function getStorageUsedAttribute()
+    {
+        return $this->pdfProcessings()->sum('file_size') + $this->pdfProcessings()->sum('processed_file_size');
     }
 
     public function getStorageUsedHumanAttribute(): string
     {
         $bytes = $this->storage_used;
-        $units = ['B', 'KB', 'MB', 'GB'];
+        if ($bytes === 0) return '0 B';
         
-        for ($i = 0; $bytes > 1024 && $i < count($units) - 1; $i++) {
-            $bytes /= 1024;
-        }
+        $k = 1024;
+        $sizes = ['B', 'KB', 'MB', 'GB'];
+        $i = floor(log($bytes) / log($k));
         
-        return round($bytes, 2) . ' ' . $units[$i];
+        return round($bytes / pow($k, $i), 2) . ' ' . $sizes[$i];
     }
 
     /**

@@ -7,13 +7,23 @@ export default defineConfig({
     plugins: [
         laravel({
             input: [
-                'resources/css/app.css', 
+                'resources/css/app.css',
                 'resources/js/app.js',
-                'resources/js/components/DocumentConverter.jsx'
+                'resources/js/document-converter.js',
+                'resources/js/image-converter.js',
+                'resources/js/audio-converter.js',
+                'resources/js/video-converter.js',
+                'resources/js/profile.js',
+                'resources/js/history.js',
             ],
             refresh: true,
         }),
+        react({
+            jsxImportSource: 'react',
+            babel: {
+                plugins: []
+            }
+        }),
         tailwindcss(),
-        react(),
     ],
 });

@@ -46,8 +46,8 @@
                         </svg>
                     </div>
                     <div class="ml-4">
-                        <p class="text-sm font-medium text-gray-600">Total Conversions</p>
-                        <p class="text-2xl font-bold text-gray-900">{{ number_format($stats['total_conversions']) }}</p>
+                        <p class="text-sm font-medium text-gray-600">Total Processings</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ number_format($stats['total_processings']) }}</p>
                     </div>
                 </div>
             </div>
@@ -61,7 +61,7 @@
                     </div>
                     <div class="ml-4">
                         <p class="text-sm font-medium text-gray-600">Completed Today</p>
-                        <p class="text-2xl font-bold text-gray-900">{{ number_format($stats['completed_today']) }}</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ number_format($stats['today_processings']) }}</p>
                     </div>
                 </div>
             </div>
@@ -88,8 +88,8 @@
                         </svg>
                     </div>
                     <div class="ml-4">
-                        <p class="text-sm font-medium text-gray-600">Quick Convert</p>
-                        <p class="text-sm text-gray-500">Start converting now</p>
+                        <div class="text-2xl font-bold text-gray-900">{{ $stats['total_processings'] ?? 0 }}</div>
+                        <div class="text-sm text-gray-500">Total Processings</div>
                     </div>
                 </div>
             </div>
