@@ -61,7 +61,7 @@ class ConversionController extends Controller
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'success' => false,
+                'error' => true,
                 'message' => 'Failed to fetch conversion history: ' . $e->getMessage()
             ], 500);
         }
@@ -94,7 +94,7 @@ class ConversionController extends Controller
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'success' => false,
+                'error' => true,
                 'message' => 'Failed to fetch conversion stats: ' . $e->getMessage()
             ], 500);
         }
@@ -111,14 +111,14 @@ class ConversionController extends Controller
 
             if (!$conversion) {
                 return response()->json([
-                    'success' => false,
+                    'error' => true,
                     'message' => 'Conversion not found or not completed'
                 ], 404);
             }
 
             if (!$conversion->processed_filename) {
                 return response()->json([
-                    'success' => false,
+                    'error' => true,
                     'message' => 'No processed file available'
                 ], 404);
             }
@@ -127,7 +127,7 @@ class ConversionController extends Controller
             
             if (!Storage::exists($filePath)) {
                 return response()->json([
-                    'success' => false,
+                    'error' => true,
                     'message' => 'File not found in storage'
                 ], 404);
             }
@@ -140,8 +140,9 @@ class ConversionController extends Controller
                 ->header('Content-Disposition', 'attachment; filename="' . $conversion->processed_filename . '"');
 
         } catch (\Exception $e) {
+            Log::error("Download failed: " . $e->getMessage());
             return response()->json([
-                'success' => false,
+                'error' => true,
                 'message' => 'Download failed: ' . $e->getMessage()
             ], 500);
         }
@@ -157,7 +158,7 @@ class ConversionController extends Controller
 
             if (!$conversion) {
                 return response()->json([
-                    'success' => false,
+                    'error' => true,
                     'message' => 'Conversion not found'
                 ], 404);
             }
@@ -178,8 +179,9 @@ class ConversionController extends Controller
                 'message' => 'Conversion deleted successfully'
             ]);
         } catch (\Exception $e) {
+            Log::error("Failed to delete conversion: " . $e->getMessage());
             return response()->json([
-                'success' => false,
+                'error' => true,
                 'message' => 'Failed to delete conversion: ' . $e->getMessage()
             ], 500);
         }

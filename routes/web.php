@@ -60,11 +60,14 @@ Route::middleware(['auth'])->group(function () {
     
     // Conversion tool routes (protected)
     Route::prefix('tools')->name('tools.')->group(function () {
-        Route::get('/documents', function () { return view('tools.documents'); })->name('documents');
+        Route::get('/documents', function () {
+            return view('tools.documents');
+        })->name('documents');
         Route::get('/images', function () { return view('tools.images'); })->name('images');
         Route::get('/audio', function () { return view('tools.audio'); })->name('audio');
         Route::get('/video', function () { return view('tools.video'); })->name('video');
     });
+    
     
     // User API routes
     Route::prefix('api/user')->name('user.')->group(function () {
@@ -91,6 +94,24 @@ Route::middleware(['auth'])->group(function () {
     
     // Document conversion routes
     Route::get('/documents/download/{id}', [DocumentController::class, 'download'])->name('documents.download');
+    
+    // Image Tools API routes
+    Route::prefix('api/image-tools')->name('image-tools.')->group(function () {
+        Route::post('/process', [App\Http\Controllers\ImageToolsController::class, 'process'])->name('process');
+        Route::get('/download/{id}', [App\Http\Controllers\ImageToolsController::class, 'download'])->name('download');
+    });
+    
+    // Audio Tools API routes
+    Route::prefix('api/audio-tools')->name('audio-tools.')->group(function () {
+        Route::post('/process', [App\Http\Controllers\AudioToolsController::class, 'process'])->name('process');
+        Route::get('/download/{filename}', [App\Http\Controllers\AudioToolsController::class, 'download'])->name('download');
+    });
+    
+    // Video Tools API routes
+    Route::prefix('api/video-tools')->name('video-tools.')->group(function () {
+        Route::post('/process', [App\Http\Controllers\VideoToolsController::class, 'process'])->name('process');
+        Route::get('/download/{filename}', [App\Http\Controllers\VideoToolsController::class, 'download'])->name('download');
+    });
     
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 });

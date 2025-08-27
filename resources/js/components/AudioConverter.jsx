@@ -1,360 +1,567 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
+import { useDropzone } from 'react-dropzone';
 
 const AudioConverter = () => {
+    const [selectedTool, setSelectedTool] = useState(null);
     const [selectedFiles, setSelectedFiles] = useState([]);
-    const [selectedTool, setSelectedTool] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [results, setResults] = useState([]);
-    const [settings, setSettings] = useState({
-        quality: 'high',
-        bitrate: '320',
-        sampleRate: '44100',
-        channels: 'stereo',
-        normalize: false,
-        fadeIn: 0,
-        fadeOut: 0
-    });
-    
-    const fileInputRef = useRef(null);
+    const [toolSettings, setToolSettings] = useState({});
+    const [activeCategory, setActiveCategory] = useState('conversion');
 
-    const audioTools = [
+    // Enhanced tool categories with better organization and animations
+    const toolCategories = [
         {
-            id: 'mp3-to-wav',
-            name: 'MP3 to WAV',
-            description: 'Convert MP3 audio to WAV format',
-            category: 'Format Conversion'
+            id: 'conversion',
+            title: 'Format Conversion',
+            icon: '🔄',
+            gradient: 'from-purple-400 via-purple-500 to-purple-600',
+            description: 'Convert between different audio formats',
+            tools: [
+                { 
+                    id: 'mp3-to-wav', 
+                    name: 'MP3 → WAV', 
+                    description: 'Convert MP3 to high-quality WAV format', 
+                    icon: '🎵',
+                    color: 'from-blue-500 to-blue-600',
+                    formats: ['.mp3']
+                },
+                { 
+                    id: 'wav-to-mp3', 
+                    name: 'WAV → MP3', 
+                    description: 'Compress WAV files to MP3', 
+                    icon: '🎶',
+                    color: 'from-green-500 to-green-600',
+                    formats: ['.wav']
+                },
+                { 
+                    id: 'flac-to-mp3', 
+                    name: 'FLAC → MP3', 
+                    description: 'Convert lossless FLAC to MP3', 
+                    icon: '🎼',
+                    color: 'from-orange-500 to-orange-600',
+                    formats: ['.flac']
+                },
+                { 
+                    id: 'aac-to-mp3', 
+                    name: 'AAC → MP3', 
+                    description: 'Convert AAC files to MP3', 
+                    icon: '🎧',
+                    color: 'from-purple-500 to-purple-600',
+                    formats: ['.aac']
+                },
+                { 
+                    id: 'ogg-to-mp3', 
+                    name: 'OGG → MP3', 
+                    description: 'Convert OGG Vorbis to MP3', 
+                    icon: '🔊',
+                    color: 'from-cyan-500 to-cyan-600',
+                    formats: ['.ogg']
+                }
+            ]
         },
         {
-            id: 'wav-to-mp3',
-            name: 'WAV to MP3',
-            description: 'Convert WAV audio to MP3 format',
-            category: 'Format Conversion'
+            id: 'compression',
+            title: 'Audio Compression',
+            icon: '🗜️',
+            gradient: 'from-rose-400 via-rose-500 to-rose-600',
+            description: 'Optimize audio file sizes',
+            tools: [
+                { 
+                    id: 'compress-audio', 
+                    name: 'Compress Audio', 
+                    description: 'Reduce file size while maintaining quality', 
+                    icon: '📦',
+                    color: 'from-red-500 to-red-600',
+                    formats: ['.mp3', '.wav', '.flac', '.aac']
+                },
+                { 
+                    id: 'bitrate-converter', 
+                    name: 'Bitrate Converter', 
+                    description: 'Change audio bitrate for size optimization', 
+                    icon: '⚡',
+                    color: 'from-yellow-500 to-yellow-600',
+                    formats: ['.mp3', '.aac']
+                }
+            ]
         },
         {
-            id: 'flac-to-mp3',
-            name: 'FLAC to MP3',
-            description: 'Convert FLAC audio to MP3 format',
-            category: 'Format Conversion'
-        },
-        {
-            id: 'mp3-to-aac',
-            name: 'MP3 to AAC',
-            description: 'Convert MP3 audio to AAC format',
-            category: 'Format Conversion'
-        },
-        {
-            id: 'compress-audio',
-            name: 'Compress Audio',
-            description: 'Reduce audio file size',
-            category: 'Optimization'
-        },
-        {
-            id: 'normalize-audio',
-            name: 'Normalize Audio',
-            description: 'Normalize audio levels',
-            category: 'Enhancement'
-        },
-        {
-            id: 'trim-audio',
-            name: 'Trim Audio',
-            description: 'Cut audio to specific duration',
-            category: 'Editing'
-        },
-        {
-            id: 'merge-audio',
-            name: 'Merge Audio',
-            description: 'Combine multiple audio files',
-            category: 'Editing'
+            id: 'enhancement',
+            title: 'Audio Enhancement',
+            icon: '✨',
+            gradient: 'from-indigo-400 via-indigo-500 to-indigo-600',
+            description: 'Improve and enhance audio quality',
+            tools: [
+                { 
+                    id: 'normalize-audio', 
+                    name: 'Normalize Audio', 
+                    description: 'Balance audio levels for consistent volume', 
+                    icon: '📊',
+                    color: 'from-teal-500 to-teal-600',
+                    formats: ['.mp3', '.wav', '.flac']
+                },
+                { 
+                    id: 'noise-reduction', 
+                    name: 'Noise Reduction', 
+                    description: 'Remove background noise and improve clarity', 
+                    icon: '🔇',
+                    color: 'from-pink-500 to-pink-600',
+                    formats: ['.mp3', '.wav']
+                },
+                { 
+                    id: 'audio-trim', 
+                    name: 'Trim Audio', 
+                    description: 'Cut and trim audio files to desired length', 
+                    icon: '✂️',
+                    color: 'from-indigo-500 to-indigo-600',
+                    formats: ['.mp3', '.wav', '.flac']
+                }
+            ]
         }
     ];
 
-    const handleFileSelect = (event) => {
-        const files = Array.from(event.target.files);
-        setSelectedFiles(files);
+    // File upload handling with enhanced validation
+    const onDrop = useCallback((acceptedFiles) => {
+        const validFiles = acceptedFiles.filter(file => {
+            if (!selectedTool) return false;
+            
+            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+            const tool = toolCategories
+                .flatMap(cat => cat.tools)
+                .find(t => t.id === selectedTool.id);
+            
+            return tool?.formats.includes(fileExtension) && file.size <= 100 * 1024 * 1024; // 100MB limit
+        });
+        
+        setSelectedFiles(prev => [...prev, ...validFiles]);
+    }, [selectedTool]);
+
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({
+        onDrop,
+        accept: selectedTool ? {
+            'audio/mpeg': ['.mp3'],
+            'audio/wav': ['.wav'],
+            'audio/flac': ['.flac'],
+            'audio/aac': ['.aac'],
+            'audio/ogg': ['.ogg'],
+            'audio/x-ms-wma': ['.wma']
+        } : {},
+        multiple: true,
+        maxSize: 100 * 1024 * 1024,
+        disabled: !selectedTool
+    });
+
+    const removeFile = (index) => {
+        setSelectedFiles(prev => prev.filter((_, i) => i !== index));
     };
 
-    const handleDragOver = (event) => {
-        event.preventDefault();
+    const formatFileSize = (bytes) => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
-    const handleDrop = (event) => {
-        event.preventDefault();
-        const files = Array.from(event.dataTransfer.files);
-        setSelectedFiles(files);
+    const handleToolSelect = (tool) => {
+        setSelectedTool(tool);
+        setSelectedFiles([]);
+        setResults([]);
+        setToolSettings({});
     };
 
-    const handleProcess = async () => {
+    const processFiles = async () => {
         if (!selectedTool || selectedFiles.length === 0) return;
 
         setIsProcessing(true);
-        setResults([]);
-
+        
         try {
             const formData = new FormData();
             selectedFiles.forEach(file => {
                 formData.append('files[]', file);
             });
-            formData.append('tool', selectedTool);
-            formData.append('settings', JSON.stringify(settings));
+            formData.append('tool', selectedTool.id);
+            formData.append('settings', JSON.stringify(toolSettings));
+            formData.append('_token', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'));
 
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-            
             const response = await fetch('/api/audio-tools/process', {
                 method: 'POST',
+                body: formData,
                 headers: {
-                    'X-CSRF-TOKEN': csrfToken
-                },
-                body: formData
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                }
             });
 
-            const data = await response.json();
-
-            if (data.success) {
-                setResults(data.results);
+            const result = await response.json();
+            
+            if (result.success) {
+                setResults(result.results || []);
             } else {
-                alert('Processing failed: ' + data.message);
+                alert('Processing failed: ' + (result.message || 'Unknown error'));
             }
         } catch (error) {
             console.error('Processing error:', error);
-            alert('Processing failed: ' + error.message);
+            alert('An error occurred during processing. Please try again.');
         } finally {
             setIsProcessing(false);
         }
     };
 
-    const handleDownload = async (resultId, filename) => {
+    const getActionText = (toolId) => {
+        const actionMap = {
+            'mp3-to-wav': 'Convert to WAV',
+            'wav-to-mp3': 'Convert to MP3',
+            'flac-to-mp3': 'Convert to MP3',
+            'aac-to-mp3': 'Convert to MP3',
+            'ogg-to-mp3': 'Convert to MP3',
+            'compress-audio': 'Compress Audio',
+            'bitrate-converter': 'Convert Bitrate',
+            'normalize-audio': 'Normalize Audio',
+            'noise-reduction': 'Reduce Noise',
+            'audio-trim': 'Trim Audio'
+        };
+        return actionMap[toolId] || 'Process Audio';
+    };
+
+    const handleDownload = async (downloadUrl, filename) => {
         try {
-            const response = await fetch(`/api/audio-tools/download/${resultId}`);
+            console.log('Attempting download:', downloadUrl);
             
+            const response = await fetch(downloadUrl, {
+                method: 'GET',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'Accept': 'application/octet-stream',
+                },
+                credentials: 'same-origin'
+            });
+
+            console.log('Download response status:', response.status);
+            console.log('Download response headers:', Object.fromEntries(response.headers.entries()));
+
             if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Download failed with response:', errorText);
                 throw new Error(`Download failed: ${response.status} ${response.statusText}`);
             }
 
             const blob = await response.blob();
+            console.log('Downloaded blob size:', blob.size);
+            
+            if (blob.size === 0) {
+                throw new Error('Downloaded file is empty');
+            }
+
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = filename || 'converted-audio';
+            a.download = filename || 'download';
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
+            
+            console.log('Download completed successfully');
         } catch (error) {
-            console.error('Download error:', error);
-            alert('Download failed: ' + error.message);
+            console.error('Download error details:', error);
+            alert(`Download failed: ${error.message}. Check console for details.`);
         }
     };
 
-    const groupedTools = audioTools.reduce((acc, tool) => {
-        if (!acc[tool.category]) {
-            acc[tool.category] = [];
-        }
-        acc[tool.category].push(tool);
-        return acc;
-    }, {});
-
     return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 p-6">
-            <div className="max-w-7xl mx-auto">
-                <div className="text-center mb-8">
-                    <h1 className="text-4xl font-bold text-gray-900 mb-4">
-                        Audio Converter
-                    </h1>
-                    <p className="text-lg text-gray-600">
-                        Convert, compress, and enhance your audio files with professional tools
-                    </p>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-pink-50">
+            <div className="container mx-auto px-4 py-8 space-y-8">
+                {/* Enhanced Header */}
+                <div className="text-center space-y-6">
+                    <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-600 rounded-3xl shadow-lg transform rotate-3 hover:rotate-0 transition-transform duration-300">
+                        <span className="text-3xl">🎵</span>
+                    </div>
+                    <div>
+                        <h1 className="text-4xl lg:text-6xl font-bold bg-gradient-to-r from-gray-900 via-purple-900 to-pink-900 bg-clip-text text-transparent mb-4">
+                            Audio Converter
+                        </h1>
+                        <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                            Transform your audio files with professional-grade conversion tools. 
+                            Fast, secure, and high-quality results every time.
+                        </p>
+                    </div>
+                    
+                    {/* Stats */}
+                    <div className="flex justify-center space-x-8 text-center">
+                        <div className="bg-white/70 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg">
+                            <div className="text-2xl font-bold text-purple-600">{selectedFiles.length}</div>
+                            <div className="text-sm text-gray-600">Files Selected</div>
+                        </div>
+                        <div className="bg-white/70 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg">
+                            <div className="text-2xl font-bold text-green-600">{results.filter(r => r.status === 'completed').length}</div>
+                            <div className="text-sm text-gray-600">Completed</div>
+                        </div>
+                        <div className="bg-white/70 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg">
+                            <div className="text-2xl font-bold text-pink-600">∞</div>
+                            <div className="text-sm text-gray-600">Free Usage</div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Tool Selection */}
-                <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-                    <h2 className="text-2xl font-semibold text-gray-800 mb-6">Choose Audio Tool</h2>
-                    
-                    {Object.entries(groupedTools).map(([category, tools]) => (
-                        <div key={category} className="mb-6">
-                            <h3 className="text-lg font-medium text-gray-700 mb-3">{category}</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {tools.map((tool) => (
+                {/* Category Navigation */}
+                <div className="flex justify-center">
+                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2 shadow-lg border border-white/20">
+                        <div className="flex space-x-2">
+                            {toolCategories.map((category) => (
+                                <button
+                                    key={category.id}
+                                    onClick={() => setActiveCategory(category.id)}
+                                    className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                                        activeCategory === category.id
+                                            ? `bg-gradient-to-r ${category.gradient} text-white shadow-lg transform scale-105`
+                                            : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                                    }`}
+                                >
+                                    <span className="mr-2">{category.icon}</span>
+                                    {category.title}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Active Category Tools */}
+                {toolCategories.map((category) => (
+                    activeCategory === category.id && (
+                        <div key={category.id} className="space-y-6">
+                            <div className="text-center">
+                                <h2 className="text-3xl font-bold text-gray-900 mb-2">{category.title}</h2>
+                                <p className="text-gray-600">{category.description}</p>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                                {category.tools.map((tool, index) => (
                                     <div
                                         key={tool.id}
-                                        onClick={() => setSelectedTool(tool.id)}
-                                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-                                            selectedTool === tool.id
-                                                ? 'border-purple-500 bg-purple-50'
-                                                : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+                                        className={`group cursor-pointer transform transition-all duration-300 hover:scale-105 ${
+                                            selectedTool?.id === tool.id ? 'scale-105' : ''
                                         }`}
+                                        style={{ animationDelay: `${index * 100}ms` }}
+                                        onClick={() => handleToolSelect(tool)}
                                     >
-                                        <h4 className="font-medium text-gray-900">{tool.name}</h4>
-                                        <p className="text-sm text-gray-600 mt-1">{tool.description}</p>
+                                        <div className={`relative overflow-hidden rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 ${
+                                            selectedTool?.id === tool.id 
+                                                ? `bg-gradient-to-br ${tool.color} text-white ring-4 ring-purple-300` 
+                                                : 'bg-white hover:bg-gray-50'
+                                        }`}>
+                                            {/* Background Pattern */}
+                                            <div className="absolute inset-0 opacity-5">
+                                                <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white to-transparent transform rotate-45"></div>
+                                            </div>
+                                            
+                                            <div className="relative p-6 text-center space-y-4">
+                                                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl ${
+                                                    selectedTool?.id === tool.id 
+                                                        ? 'bg-white/20' 
+                                                        : `bg-gradient-to-br ${tool.color}`
+                                                } shadow-lg`}>
+                                                    <span className={`text-2xl ${
+                                                        selectedTool?.id === tool.id ? 'text-white' : 'text-white'
+                                                    }`}>
+                                                        {tool.icon}
+                                                    </span>
+                                                </div>
+                                                
+                                                <div>
+                                                    <h3 className={`font-bold text-lg ${
+                                                        selectedTool?.id === tool.id ? 'text-white' : 'text-gray-900'
+                                                    }`}>
+                                                        {tool.name}
+                                                    </h3>
+                                                    <p className={`text-sm ${
+                                                        selectedTool?.id === tool.id ? 'text-white/80' : 'text-gray-600'
+                                                    }`}>
+                                                        {tool.description}
+                                                    </p>
+                                                </div>
+                                                
+                                                <div className={`text-xs ${
+                                                    selectedTool?.id === tool.id ? 'text-white/60' : 'text-gray-400'
+                                                }`}>
+                                                    {tool.formats.join(', ')}
+                                                </div>
+                                            </div>
+                                            
+                                            {selectedTool?.id === tool.id && (
+                                                <div className="absolute top-2 right-2">
+                                                    <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center">
+                                                        <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                        </svg>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                    ))}
-                </div>
+                    )
+                ))}
 
-                {/* Settings Panel */}
+                {/* File Upload Section */}
                 {selectedTool && (
-                    <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-                        <h2 className="text-2xl font-semibold text-gray-800 mb-6">Audio Settings</h2>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Quality
-                                </label>
-                                <select
-                                    value={settings.quality}
-                                    onChange={(e) => setSettings({...settings, quality: e.target.value})}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                >
-                                    <option value="low">Low</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="high">High</option>
-                                    <option value="lossless">Lossless</option>
-                                </select>
+                    <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/20 overflow-hidden">
+                        <div className="p-8 space-y-6">
+                            <div className="text-center">
+                                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${selectedTool.color} shadow-lg mb-4`}>
+                                    <span className="text-2xl text-white">{selectedTool.icon}</span>
+                                </div>
+                                <h3 className="text-2xl font-bold text-gray-900">{selectedTool.name}</h3>
+                                <p className="text-gray-600">{selectedTool.description}</p>
+                            </div>
+                            
+                            <div
+                                {...getRootProps()}
+                                className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-all duration-300 cursor-pointer ${
+                                    isDragActive 
+                                        ? 'border-purple-400 bg-purple-50/50 scale-105' 
+                                        : 'border-gray-300 hover:border-purple-400 hover:bg-purple-50/30'
+                                }`}
+                            >
+                                <input {...getInputProps()} />
+                                <div className="space-y-6">
+                                    <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center transition-all duration-300 ${
+                                        isDragActive 
+                                            ? 'bg-gradient-to-br from-purple-400 to-purple-600 scale-110' 
+                                            : 'bg-gradient-to-br from-gray-100 to-gray-200'
+                                    }`}>
+                                        <svg className={`w-12 h-12 transition-colors duration-300 ${
+                                            isDragActive ? 'text-white' : 'text-gray-400'
+                                        }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <p className="text-2xl font-bold text-gray-900 mb-2">
+                                            {isDragActive ? 'Drop files here!' : 'Drag & drop your audio files'}
+                                        </p>
+                                        <p className="text-gray-600">
+                                            or <span className="text-purple-600 font-semibold">click to browse</span>
+                                        </p>
+                                    </div>
+                                    <div className="text-sm text-gray-500 space-y-1">
+                                        <p>Supported formats: {selectedTool.formats.join(', ')}</p>
+                                        <p>Maximum file size: 100MB per file</p>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Bitrate (kbps)
-                                </label>
-                                <select
-                                    value={settings.bitrate}
-                                    onChange={(e) => setSettings({...settings, bitrate: e.target.value})}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                >
-                                    <option value="128">128</option>
-                                    <option value="192">192</option>
-                                    <option value="256">256</option>
-                                    <option value="320">320</option>
-                                </select>
-                            </div>
+                            {/* Selected Files */}
+                            {selectedFiles.length > 0 && (
+                                <div className="space-y-4">
+                                    <h4 className="font-semibold text-gray-900">Selected Files ({selectedFiles.length})</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-64 overflow-y-auto">
+                                        {selectedFiles.map((file, index) => (
+                                            <div key={index} className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+                                                <div className="flex items-center space-x-3">
+                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br ${selectedTool.color}`}>
+                                                        <span className="text-white text-sm font-bold">
+                                                            {file.name.split('.').pop().toUpperCase()}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-gray-900 truncate max-w-48">{file.name}</p>
+                                                        <p className="text-sm text-gray-500">{formatFileSize(file.size)}</p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => removeFile(index)}
+                                                    className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors duration-200"
+                                                >
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Sample Rate (Hz)
-                                </label>
-                                <select
-                                    value={settings.sampleRate}
-                                    onChange={(e) => setSettings({...settings, sampleRate: e.target.value})}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            {/* Action Buttons */}
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                <button
+                                    onClick={processFiles}
+                                    disabled={selectedFiles.length === 0 || isProcessing}
+                                    className={`flex-1 px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform ${
+                                        selectedFiles.length === 0 || isProcessing
+                                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                            : `bg-gradient-to-r ${selectedTool.color} text-white hover:shadow-lg hover:scale-105 active:scale-95`
+                                    }`}
                                 >
-                                    <option value="22050">22050</option>
-                                    <option value="44100">44100</option>
-                                    <option value="48000">48000</option>
-                                    <option value="96000">96000</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Channels
-                                </label>
-                                <select
-                                    value={settings.channels}
-                                    onChange={(e) => setSettings({...settings, channels: e.target.value})}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    {isProcessing ? (
+                                        <span className="flex items-center justify-center">
+                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Processing...
+                                        </span>
+                                    ) : (
+                                        <span className="flex items-center justify-center">
+                                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                                            </svg>
+                                            {getActionText(selectedTool.id)}
+                                        </span>
+                                    )}
+                                </button>
+                                
+                                <button
+                                    onClick={() => {
+                                        setSelectedFiles([]);
+                                        setResults([]);
+                                    }}
+                                    className="px-8 py-4 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
                                 >
-                                    <option value="mono">Mono</option>
-                                    <option value="stereo">Stereo</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        checked={settings.normalize}
-                                        onChange={(e) => setSettings({...settings, normalize: e.target.checked})}
-                                        className="mr-2"
-                                    />
-                                    <span className="text-sm font-medium text-gray-700">Normalize Audio</span>
-                                </label>
+                                    Clear All
+                                </button>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* File Upload */}
-                <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-                    <h2 className="text-2xl font-semibold text-gray-800 mb-6">Upload Audio Files</h2>
-                    
-                    <div
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                        onClick={() => fileInputRef.current?.click()}
-                        className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-purple-400 transition-colors"
-                    >
-                        <div className="text-gray-600">
-                            <svg className="mx-auto h-12 w-12 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                            </svg>
-                            <p className="text-lg mb-2">Drop audio files here or click to browse</p>
-                            <p className="text-sm">Supports MP3, WAV, FLAC, AAC, OGG formats</p>
-                        </div>
-                    </div>
-
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        multiple
-                        accept="audio/*"
-                        onChange={handleFileSelect}
-                        className="hidden"
-                    />
-
-                    {selectedFiles.length > 0 && (
-                        <div className="mt-6">
-                            <h3 className="text-lg font-medium text-gray-800 mb-3">Selected Files:</h3>
-                            <div className="space-y-2">
-                                {selectedFiles.map((file, index) => (
-                                    <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
-                                        <span className="text-sm text-gray-700">{file.name}</span>
-                                        <span className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                {/* Results Section */}
+                {results.length > 0 && (
+                    <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/20">
+                        <div className="p-8 space-y-6">
+                            <h3 className="text-2xl font-bold text-gray-900">Conversion Results</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {results.map((result, index) => (
+                                    <div key={index} className="border border-gray-200 rounded-xl p-6 bg-white shadow-sm hover:shadow-md transition-shadow duration-200">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <span className="font-medium text-gray-900 truncate">{result.filename}</span>
+                                            <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                                                result.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                                result.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                                'bg-blue-100 text-blue-800'
+                                            }`}>
+                                                {result.status === 'completed' ? 'Complete' :
+                                                 result.status === 'failed' ? 'Failed' :
+                                                 'Processing...'}
+                                            </span>
+                                        </div>
+                                        {result.status === 'completed' && result.download_url && (
+                                            <button
+                                                onClick={() => handleDownload(result.download_url, result.filename)}
+                                                className={`w-full inline-flex items-center justify-center px-4 py-3 bg-gradient-to-r ${selectedTool.color} text-white font-medium rounded-lg hover:shadow-lg transition-all duration-200 transform hover:scale-105`}
+                                            >
+                                                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                                </svg>
+                                                Download File
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                             </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Process Button */}
-                {selectedTool && selectedFiles.length > 0 && (
-                    <div className="text-center mb-8">
-                        <button
-                            onClick={handleProcess}
-                            disabled={isProcessing}
-                            className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-semibold py-3 px-8 rounded-lg transition-colors duration-200"
-                        >
-                            {isProcessing ? 'Processing...' : 'Convert Audio'}
-                        </button>
-                    </div>
-                )}
-
-                {/* Results */}
-                {results.length > 0 && (
-                    <div className="bg-white rounded-xl shadow-lg p-6">
-                        <h2 className="text-2xl font-semibold text-gray-800 mb-6">Conversion Results</h2>
-                        
-                        <div className="space-y-4">
-                            {results.map((result, index) => (
-                                <div key={index} className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
-                                    <div>
-                                        <h3 className="font-medium text-gray-900">{result.filename}</h3>
-                                        <p className="text-sm text-gray-600">Status: {result.status}</p>
-                                    </div>
-                                    
-                                    {result.status === 'completed' && (
-                                        <button
-                                            onClick={() => handleDownload(result.id, result.filename)}
-                                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
-                                        >
-                                            Download
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
                         </div>
                     </div>
                 )}

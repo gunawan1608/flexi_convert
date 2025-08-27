@@ -8,6 +8,10 @@ const DocumentConverter = () => {
     const [results, setResults] = useState([]);
     const [toolSettings, setToolSettings] = useState({});
     const [activeCategory, setActiveCategory] = useState('convert-to');
+    const [processingStatus, setProcessingStatus] = useState('');
+    const [downloadUrl, setDownloadUrl] = useState(null);
+    const [outputFilename, setOutputFilename] = useState(null);
+    const [errorMessage, setErrorMessage] = useState(null);
 
     // Enhanced tool categories with better organization and animations
     const toolCategories = [
@@ -160,23 +164,35 @@ const DocumentConverter = () => {
         setSelectedFiles(prev => [...prev, ...validFiles]);
     }, [selectedTool]);
 
+    // Get file accept types based on selected tool
+    const getAcceptTypes = () => {
+        if (!selectedTool) return {};
+        
+        const toolAcceptMap = {
+            'word-to-pdf': { 'application/msword': ['.doc'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] },
+            'excel-to-pdf': { 'application/vnd.ms-excel': ['.xls'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
+            'ppt-to-pdf': { 'application/vnd.ms-powerpoint': ['.ppt'], 'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'] },
+            'jpg-to-pdf': { 'image/jpeg': ['.jpg', '.jpeg'], 'image/png': ['.png'], 'image/gif': ['.gif'], 'image/bmp': ['.bmp'] },
+            'image-to-pdf': { 'image/jpeg': ['.jpg', '.jpeg'], 'image/png': ['.png'], 'image/gif': ['.gif'], 'image/bmp': ['.bmp'] },
+            'html-to-pdf': { 'text/html': ['.html', '.htm'] },
+            'pdf-to-word': { 'application/pdf': ['.pdf'] },
+            'pdf-to-excel': { 'application/pdf': ['.pdf'] },
+            'pdf-to-ppt': { 'application/pdf': ['.pdf'] },
+            'pdf-to-jpg': { 'application/pdf': ['.pdf'] },
+            'pdf-to-image': { 'application/pdf': ['.pdf'] },
+            'merge-pdf': { 'application/pdf': ['.pdf'] },
+            'split-pdf': { 'application/pdf': ['.pdf'] },
+            'compress-pdf': { 'application/pdf': ['.pdf'] },
+            'rotate-pdf': { 'application/pdf': ['.pdf'] }
+        };
+        
+        return toolAcceptMap[selectedTool.id] || {};
+    };
+
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
-        accept: selectedTool ? {
-            'application/pdf': ['.pdf'],
-            'image/jpeg': ['.jpg', '.jpeg'],
-            'image/png': ['.png'],
-            'image/gif': ['.gif'],
-            'image/bmp': ['.bmp'],
-            'application/msword': ['.doc'],
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-            'application/vnd.ms-powerpoint': ['.ppt'],
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
-            'application/vnd.ms-excel': ['.xls'],
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-            'text/html': ['.html', '.htm']
-        } : {},
-        multiple: true,
+        accept: getAcceptTypes(),
+        multiple: selectedTool?.id === 'merge-pdf' || selectedTool?.id === 'image-to-pdf' || selectedTool?.id === 'jpg-to-pdf',
         maxSize: 100 * 1024 * 1024,
         disabled: !selectedTool
     });
@@ -198,12 +214,19 @@ const DocumentConverter = () => {
         setSelectedFiles([]);
         setResults([]);
         setToolSettings({});
+        setProcessingStatus('');
+        setDownloadUrl(null);
+        setOutputFilename(null);
+        setErrorMessage(null);
     };
 
     const processFiles = async () => {
         if (!selectedTool || selectedFiles.length === 0) return;
 
         setIsProcessing(true);
+        setProcessingStatus('Uploading files...');
+        setErrorMessage(null);
+        setDownloadUrl(null);
         
         try {
             const formData = new FormData();
@@ -212,26 +235,31 @@ const DocumentConverter = () => {
             });
             formData.append('tool', selectedTool.id);
             formData.append('settings', JSON.stringify(toolSettings));
-            formData.append('_token', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'));
 
-            const response = await fetch('/api/pdf-tools/process', {
+            setProcessingStatus('Processing conversion...');
+
+            const response = await window.apiRequest('/api/pdf-tools/process', {
                 method: 'POST',
-                body: formData,
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-                }
+                body: formData
             });
-
-            const result = await response.json();
             
-            if (result.success) {
-                setResults(result.results || []);
+            if (response.success) {
+                setProcessingStatus('Conversion completed!');
+                setDownloadUrl(response.download_url);
+                setOutputFilename(response.output_filename);
+                setResults([{
+                    filename: response.output_filename,
+                    status: 'completed',
+                    download_url: response.download_url,
+                    processing_id: response.processing_id
+                }]);
             } else {
-                alert('Processing failed: ' + (result.message || 'Unknown error'));
+                throw new Error(response.message || 'Conversion failed');
             }
         } catch (error) {
             console.error('Processing error:', error);
-            alert('An error occurred during processing. Please try again.');
+            setErrorMessage(error.message || 'An error occurred during processing');
+            setProcessingStatus('Conversion failed');
         } finally {
             setIsProcessing(false);
         }
@@ -482,6 +510,10 @@ const DocumentConverter = () => {
                                     <div className="text-sm text-gray-500 space-y-1">
                                         <p>Supported formats: {selectedTool.formats.join(', ')}</p>
                                         <p>Maximum file size: 100MB per file</p>
+                                        {selectedTool.id === 'merge-pdf' || selectedTool.id === 'image-to-pdf' || selectedTool.id === 'jpg-to-pdf' ? 
+                                            <p className="text-blue-600 font-medium">Multiple files allowed</p> : 
+                                            <p className="text-orange-600 font-medium">Single file only</p>
+                                        }
                                     </div>
                                 </div>
                             </div>
@@ -500,13 +532,14 @@ const DocumentConverter = () => {
                                                         </span>
                                                     </div>
                                                     <div>
-                                                        <p className="font-medium text-gray-900 truncate max-w-48">{file.name}</p>
+                                                        <p className="font-medium text-gray-900 truncate max-w-48" title={file.name}>{file.name}</p>
                                                         <p className="text-sm text-gray-500">{formatFileSize(file.size)}</p>
                                                     </div>
                                                 </div>
                                                 <button
                                                     onClick={() => removeFile(index)}
-                                                    className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors duration-200"
+                                                    disabled={isProcessing}
+                                                    className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
                                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -514,6 +547,60 @@ const DocumentConverter = () => {
                                                 </button>
                                             </div>
                                         ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Processing Status */}
+                            {processingStatus && (
+                                <div className={`p-4 rounded-xl border ${isProcessing ? 'bg-blue-50 border-blue-200' : errorMessage ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                                    <div className="flex items-center space-x-3">
+                                        {isProcessing && (
+                                            <svg className="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                        )}
+                                        {!isProcessing && !errorMessage && (
+                                            <svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                            </svg>
+                                        )}
+                                        {errorMessage && (
+                                            <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                        )}
+                                        <span className={`font-medium ${isProcessing ? 'text-blue-800' : errorMessage ? 'text-red-800' : 'text-green-800'}`}>
+                                            {errorMessage || processingStatus}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Download Button */}
+                            {downloadUrl && outputFilename && !isProcessing && (
+                                <div className="bg-green-50 border border-green-200 rounded-xl p-6">
+                                    <div className="text-center space-y-4">
+                                        <div className="flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mx-auto">
+                                            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-lg font-semibold text-green-800 mb-2">File Ready for Download!</h4>
+                                            <p className="text-green-700 mb-4">Your converted file: <span className="font-medium">{outputFilename}</span></p>
+                                            <a
+                                                href={downloadUrl}
+                                                download={outputFilename}
+                                                className={`inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r ${selectedTool.color} text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-200 transform hover:scale-105`}
+                                            >
+                                                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                                </svg>
+                                                Download File
+                                            </a>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -551,8 +638,13 @@ const DocumentConverter = () => {
                                     onClick={() => {
                                         setSelectedFiles([]);
                                         setResults([]);
+                                        setProcessingStatus('');
+                                        setDownloadUrl(null);
+                                        setOutputFilename(null);
+                                        setErrorMessage(null);
                                     }}
-                                    className="px-8 py-4 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+                                    disabled={isProcessing}
+                                    className="px-8 py-4 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     Clear All
                                 </button>
