@@ -478,6 +478,210 @@ const DocumentConverter = () => {
                                 <p className="text-gray-600">{selectedTool.description}</p>
                             </div>
                             
+                            {/* Tool-Specific Settings - Only show for PDF tools, not convert tools */}
+                            {selectedTool && ['rotate-pdf', 'split-pdf', 'compress-pdf', 'merge-pdf'].includes(selectedTool.id) && (
+                                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-200">
+                                    <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                        <span className="mr-2">⚙️</span>
+                                        Settings for {selectedTool.name}
+                                    </h4>
+                                    
+                                    {/* Rotate PDF Settings */}
+                                    {selectedTool.id === 'rotate-pdf' && (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-3">
+                                                    Pilih Derajat Rotasi:
+                                                </label>
+                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                    {[
+                                                        { value: '90', label: '90° (Putar Kanan)', icon: '↻' },
+                                                        { value: '180', label: '180° (Putar Balik)', icon: '↺' },
+                                                        { value: '270', label: '270° (Putar Kiri)', icon: '↻' },
+                                                        { value: '-90', label: '-90° (Putar Kiri)', icon: '↺' }
+                                                    ].map((option) => (
+                                                        <button
+                                                            key={option.value}
+                                                            type="button"
+                                                            onClick={() => setToolSettings({ ...toolSettings, rotation: option.value })}
+                                                            className={`p-4 rounded-xl border-2 transition-all duration-200 text-center ${
+                                                                toolSettings.rotation === option.value
+                                                                    ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md'
+                                                                    : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50'
+                                                            }`}
+                                                        >
+                                                            <div className="text-2xl mb-2">{option.icon}</div>
+                                                            <div className="text-sm font-medium">{option.label}</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="bg-blue-100 border border-blue-300 rounded-lg p-3">
+                                                <p className="text-sm text-blue-800">
+                                                    <span className="font-medium">💡 Tips:</span> Pilih derajat rotasi yang sesuai untuk memperbaiki orientasi halaman PDF Anda.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Split PDF Settings */}
+                                    {selectedTool.id === 'split-pdf' && (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-3">
+                                                    Mode Pemisahan:
+                                                </label>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    {[
+                                                        { value: 'all', label: 'Pisah Semua Halaman', desc: 'Setiap halaman jadi file terpisah' },
+                                                        { value: 'range', label: 'Range Halaman', desc: 'Pisah berdasarkan range tertentu' },
+                                                        { value: 'interval', label: 'Interval Halaman', desc: 'Pisah setiap N halaman' }
+                                                    ].map((option) => (
+                                                        <button
+                                                            key={option.value}
+                                                            type="button"
+                                                            onClick={() => setToolSettings({ ...toolSettings, splitMode: option.value })}
+                                                            className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                                                                toolSettings.splitMode === option.value
+                                                                    ? 'border-yellow-500 bg-yellow-50 text-yellow-700 shadow-md'
+                                                                    : 'border-gray-200 bg-white hover:border-yellow-300 hover:bg-yellow-50'
+                                                            }`}
+                                                        >
+                                                            <div className="font-medium mb-1">{option.label}</div>
+                                                            <div className="text-sm text-gray-600">{option.desc}</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Range Input */}
+                                            {toolSettings.splitMode === 'range' && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Halaman Mulai:
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            value={toolSettings.startPage || ''}
+                                                            onChange={(e) => setToolSettings({ ...toolSettings, startPage: e.target.value })}
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                                                            placeholder="1"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Halaman Akhir:
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            value={toolSettings.endPage || ''}
+                                                            onChange={(e) => setToolSettings({ ...toolSettings, endPage: e.target.value })}
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                                                            placeholder="10"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Interval Input */}
+                                            {toolSettings.splitMode === 'interval' && (
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Interval Halaman:
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        value={toolSettings.interval || ''}
+                                                        onChange={(e) => setToolSettings({ ...toolSettings, interval: e.target.value })}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                                                        placeholder="5"
+                                                    />
+                                                    <p className="text-sm text-gray-600 mt-1">Contoh: 5 = setiap 5 halaman jadi 1 file</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    
+                                    {/* Merge PDF Settings */}
+                                    {selectedTool.id === 'merge-pdf' && (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-3">
+                                                    Urutan File:
+                                                </label>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    {[
+                                                        { value: 'upload', label: 'Sesuai Urutan Upload', desc: 'File digabung sesuai urutan upload' },
+                                                        { value: 'name', label: 'Sesuai Nama File', desc: 'File diurutkan berdasarkan nama (A-Z)' }
+                                                    ].map((option) => (
+                                                        <button
+                                                            key={option.value}
+                                                            type="button"
+                                                            onClick={() => setToolSettings({ ...toolSettings, mergeOrder: option.value })}
+                                                            className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                                                                toolSettings.mergeOrder === option.value
+                                                                    ? 'border-teal-500 bg-teal-50 text-teal-700 shadow-md'
+                                                                    : 'border-gray-200 bg-white hover:border-teal-300 hover:bg-teal-50'
+                                                            }`}
+                                                        >
+                                                            <div className="font-medium mb-1">{option.label}</div>
+                                                            <div className="text-sm text-gray-600">{option.desc}</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="bg-teal-100 border border-teal-300 rounded-lg p-3">
+                                                <p className="text-sm text-teal-800">
+                                                    <span className="font-medium">📋 Info:</span> Anda dapat mengatur ulang urutan file dengan drag & drop setelah upload.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Compress PDF Settings */}
+                                    {selectedTool.id === 'compress-pdf' && (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-3">
+                                                    Level Kompresi:
+                                                </label>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    {[
+                                                        { value: 'low', label: 'Ringan', desc: 'Kualitas tinggi, ukuran sedang', reduction: '~30%' },
+                                                        { value: 'medium', label: 'Sedang', desc: 'Kualitas baik, ukuran kecil', reduction: '~50%' },
+                                                        { value: 'high', label: 'Tinggi', desc: 'Kualitas cukup, ukuran sangat kecil', reduction: '~70%' }
+                                                    ].map((option) => (
+                                                        <button
+                                                            key={option.value}
+                                                            type="button"
+                                                            onClick={() => setToolSettings({ ...toolSettings, compressionLevel: option.value })}
+                                                            className={`p-4 rounded-xl border-2 transition-all duration-200 text-center ${
+                                                                toolSettings.compressionLevel === option.value
+                                                                    ? 'border-red-500 bg-red-50 text-red-700 shadow-md'
+                                                                    : 'border-gray-200 bg-white hover:border-red-300 hover:bg-red-50'
+                                                            }`}
+                                                        >
+                                                            <div className="font-medium mb-1">{option.label}</div>
+                                                            <div className="text-sm text-gray-600 mb-1">{option.desc}</div>
+                                                            <div className="text-xs font-medium text-red-600">{option.reduction}</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="bg-red-100 border border-red-300 rounded-lg p-3">
+                                                <p className="text-sm text-red-800">
+                                                    <span className="font-medium">⚠️ Perhatian:</span> Kompresi tinggi dapat mengurangi kualitas gambar dan teks dalam PDF.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            
                             <div
                                 {...getRootProps()}
                                 className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-all duration-300 cursor-pointer ${

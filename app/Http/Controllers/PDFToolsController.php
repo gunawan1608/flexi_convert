@@ -162,7 +162,7 @@ class PDFToolsController extends Controller
      * Compress PDF using Ghostscript with FPDI fallback
      * 
      * @param \Illuminate\Http\UploadedFile $file PDF file to compress
-     * @param array $settings Compression settings (quality: low|medium|high|maximum)
+     * @param array $settings Compression settings (compressionLevel: low|medium|high)
      * @return \Illuminate\Http\JsonResponse Success response with download info or error
      */
     private function compressPdf($file, $settings = [])
@@ -173,6 +173,63 @@ class PDFToolsController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'PDF compression failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Rotate PDF pages
+     * 
+     * @param \Illuminate\Http\UploadedFile $file PDF file to rotate
+     * @param array $settings Rotation settings (rotation: 90|180|270|-90)
+     * @return \Illuminate\Http\JsonResponse Success response with download info or error
+     */
+    private function rotatePdf($file, $settings = [])
+    {
+        try {
+            return PDFToolsHelperMethods::processRotatePdf($file, $settings);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PDF rotation failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Split PDF into separate files
+     * 
+     * @param \Illuminate\Http\UploadedFile $file PDF file to split
+     * @param array $settings Split settings (splitMode, startPage, endPage, interval)
+     * @return \Illuminate\Http\JsonResponse Success response with download info or error
+     */
+    private function splitPdf($file, $settings = [])
+    {
+        try {
+            return PDFToolsHelperMethods::processSplitPdf($file, $settings);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PDF split failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Merge multiple PDFs into one file
+     * 
+     * @param array $files Array of PDF files to merge
+     * @param array $settings Merge settings (mergeOrder: upload|name)
+     * @return \Illuminate\Http\JsonResponse Success response with download info or error
+     */
+    private function mergePdfs($files, $settings = [])
+    {
+        try {
+            return PDFToolsHelperMethods::processMergePdfs($files, $settings);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PDF merge failed: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -438,166 +495,6 @@ class PDFToolsController extends Controller
             return response()->json([
                 'error' => true,
                 'message' => "Konversi PDF ke gambar gagal: " . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Merge multiple PDF files into one document using FPDI
-     * 
-     * @param array $files Array of PDF files to merge
-     * @param array $settings Merge settings (optional)
-     * @return \Illuminate\Http\JsonResponse Success response with download info or error
-     */
-    private function mergePdfs($files, $settings = [])
-    {
-        try {
-            return PDFToolsHelperMethods::processMergePdfs($files, $settings);
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'PDF merge failed: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Split PDF
-     */
-    private function splitPdf($file, $settings = [])
-    {
-        $processing = null;
-        try {
-            $inputPath = $file->store('pdf-tools/uploads');
-            $fullInputPath = Storage::path($inputPath);
-            
-            $outputFileName = 'split_pdf_' . Str::uuid() . '.zip';
-            $outputPath = 'pdf-tools/outputs/' . $outputFileName;
-            
-            $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
-                'tool_name' => 'split-pdf',
-                'original_filename' => $file->getClientOriginalName(),
-                'processed_filename' => $outputFileName,
-                'file_size' => $file->getSize(),
-                'status' => 'processing',
-                'progress' => 0,
-                'settings' => json_encode($settings)
-            ]);
-
-            $fpdi = new Fpdi();
-            $pageCount = $fpdi->setSourceFile($fullInputPath);
-            
-            $zip = new \ZipArchive();
-            $tempZipPath = sys_get_temp_dir() . '/' . uniqid() . '.zip';
-            
-            if ($zip->open($tempZipPath, \ZipArchive::CREATE) !== TRUE) {
-                throw new \Exception('Tidak dapat membuat file ZIP');
-            }
-            
-            $splitMode = $settings['split_mode'] ?? 'each_page';
-            
-            if ($splitMode === 'each_page') {
-                for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
-                    $newPdf = new Fpdi();
-                    $templateId = $newPdf->importPage($pageNo, '/MediaBox', $fullInputPath);
-                    $size = $newPdf->getTemplateSize($templateId);
-                    
-                    $newPdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
-                    $newPdf->useTemplate($templateId);
-                    
-                    $pageFileName = 'page_' . str_pad($pageNo, 3, '0', STR_PAD_LEFT) . '.pdf';
-                    $zip->addFromString($pageFileName, $newPdf->Output('S'));
-                }
-            }
-            
-            $zip->close();
-            Storage::put($outputPath, file_get_contents($tempZipPath));
-            unlink($tempZipPath);
-            Storage::delete($inputPath);
-            
-            $processing->update([
-                'status' => 'completed',
-                'progress' => 100,
-                'completed_at' => now()
-            ]);
-
-            return PDFToolsHelperMethods::createSuccessResponse('PDF berhasil dipecah', $processing->id, $outputFileName, route('pdf-tools.download', $processing->id));
-
-        } catch (\Exception $e) {
-            if ($processing) {
-                $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
-            }
-            Log::error("PDF split failed: " . $e->getMessage());
-            return response()->json([
-                'error' => true,
-                'message' => 'Pemecahan PDF gagal: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Rotate PDF
-     */
-    private function rotatePdf($file, $settings = [])
-    {
-        $processing = null;
-        try {
-            $inputPath = $file->store('pdf-tools/uploads');
-            $fullInputPath = Storage::path($inputPath);
-            
-            $outputFileName = 'rotated_pdf_' . Str::uuid() . '.pdf';
-            $outputPath = 'pdf-tools/outputs/' . $outputFileName;
-            
-            $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
-                'tool_name' => 'rotate-pdf',
-                'original_filename' => $file->getClientOriginalName(),
-                'processed_filename' => $outputFileName,
-                'file_size' => $file->getSize(),
-                'status' => 'processing',
-                'progress' => 0,
-                'settings' => json_encode($settings)
-            ]);
-
-            $rotation = (int)($settings['rotation'] ?? 90);
-            
-            $fpdi = new Fpdi();
-            $pageCount = $fpdi->setSourceFile($fullInputPath);
-            
-            for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
-                $templateId = $fpdi->importPage($pageNo);
-                $size = $fpdi->getTemplateSize($templateId);
-                
-                if ($rotation == 90 || $rotation == 270) {
-                    $fpdi->AddPage('P', [$size['height'], $size['width']]);
-                } else {
-                    $fpdi->AddPage($size['orientation'], [$size['width'], $size['height']]);
-                }
-                
-                $fpdi->useTemplate($templateId, 0, 0, null, null, true);
-            }
-            
-            $pdfContent = $fpdi->Output('S');
-            Storage::put($outputPath, $pdfContent);
-            Storage::delete($inputPath);
-            
-            $processing->update([
-                'status' => 'completed',
-                'progress' => 100,
-                'completed_at' => now()
-            ]);
-
-            return PDFToolsHelperMethods::createSuccessResponse('PDF berhasil dirotasi', $processing->id, $outputFileName, route('pdf-tools.download', $processing->id));
-
-        } catch (\Exception $e) {
-            if ($processing) {
-                $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
-            }
-            Log::error("PDF rotation failed: " . $e->getMessage());
-            return response()->json([
-                'error' => true,
-                'message' => 'Rotasi PDF gagal: ' . $e->getMessage()
             ], 500);
         }
     }

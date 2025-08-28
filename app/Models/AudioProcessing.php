@@ -11,22 +11,26 @@ class AudioProcessing extends Model
         'user_id',
         'tool_name',
         'original_filename',
-        'processed_filename',
-        'file_size',
-        'processed_file_size',
+        'converted_filename',
+        'original_path',
+        'converted_path',
+        'original_file_size',
+        'converted_file_size',
         'status',
         'progress',
-        'settings',
+        'processing_settings',
         'error_message',
+        'started_at',
         'completed_at'
     ];
 
     protected $casts = [
-        'settings' => 'array',
+        'processing_settings' => 'array',
+        'started_at' => 'datetime',
         'completed_at' => 'datetime',
         'progress' => 'integer',
-        'file_size' => 'integer',
-        'processed_file_size' => 'integer'
+        'original_file_size' => 'integer',
+        'converted_file_size' => 'integer'
     ];
 
     public function user(): BelongsTo
