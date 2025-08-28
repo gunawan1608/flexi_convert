@@ -152,9 +152,17 @@ class AudioToolsController extends Controller
             $extension = strtolower($file->getClientOriginalExtension());
             $mimeType = $file->getMimeType();
 
-            if (!in_array($extension, $allowedExtensions) || !in_array($mimeType, $allowedMimeTypes)) {
-                throw new Exception("File type not supported for this conversion. Expected: " . implode(', ', $allowedExtensions) . ". Got: {$extension} ({$mimeType})");
+            // More lenient validation - prioritize file extension over MIME type
+            if (!in_array($extension, $allowedExtensions)) {
+                throw new Exception("File type not supported for this conversion. Expected: " . implode(', ', $allowedExtensions) . ". Got: {$extension}");
             }
+            
+            // Log MIME type for debugging but don't fail validation on it
+            Log::info("File validation passed", [
+                'extension' => $extension,
+                'mime_type' => $mimeType,
+                'tool' => $tool
+            ]);
         }
     }
 
@@ -164,7 +172,7 @@ class AudioToolsController extends Controller
     private function getValidMimeTypes($extensions)
     {
         $mimeMap = [
-            'mp3' => ['audio/mpeg', 'audio/mp3', 'application/octet-stream'],
+            'mp3' => ['audio/mpeg', 'audio/mp3', 'audio/x-wav', 'application/octet-stream'],
             'wav' => ['audio/wav', 'audio/x-wav', 'audio/wave', 'application/octet-stream'],
             'flac' => ['audio/flac', 'audio/x-flac', 'application/octet-stream'],
             'aac' => ['audio/aac', 'audio/x-aac', 'application/octet-stream'],
@@ -273,8 +281,8 @@ class AudioToolsController extends Controller
     {
         $tempInputPath = storage_path('app/' . $inputPath);
         
-        // Determine output extension based on tool
-        $outputExtension = $this->getOutputExtension($tool, $settings);
+        // Determine output extension based on tool and input path
+        $outputExtension = $this->getOutputExtension($tool, $settings, $tempInputPath);
         
         // Generate output filename with correct extension
         $outputFilename = $uniqueId . '_output.' . $outputExtension;
@@ -357,8 +365,36 @@ class AudioToolsController extends Controller
     {
         $output = [];
         $returnCode = 0;
-        exec('ffmpeg -version 2>&1', $output, $returnCode);
-        return $returnCode === 0;
+        
+        // Try different ways to find FFmpeg
+        $commands = [
+            'ffmpeg -version 2>&1',
+            '"C:\Program Files\ffmpeg-2025-08-20-git-4d7c609be3-full_build\bin\ffmpeg.exe" -version 2>&1',
+            '"C:\ffmpeg\bin\ffmpeg.exe" -version 2>&1',
+            'where ffmpeg 2>&1',
+            'ffmpeg.exe -version 2>&1'
+        ];
+        
+        foreach ($commands as $command) {
+            exec($command, $output, $returnCode);
+            Log::info("FFmpeg detection attempt", [
+                'command' => $command,
+                'return_code' => $returnCode,
+                'output_preview' => implode(' ', array_slice($output, 0, 2))
+            ]);
+            
+            if ($returnCode === 0) {
+                Log::info("FFmpeg found successfully with command: " . $command);
+                return true;
+            }
+            
+            // Reset for next attempt
+            $output = [];
+            $returnCode = 0;
+        }
+        
+        Log::warning("FFmpeg not found with any detection method");
+        return false;
     }
 
     private function buildFFmpegCommand($inputPath, $outputPath, $tool, $settings)
@@ -368,57 +404,134 @@ class AudioToolsController extends Controller
         $sampleRate = $settings['sampleRate'] ?? '44100';
         $channels = $settings['channels'] ?? 'stereo';
 
-        // Base command
-        $command = "ffmpeg -i \"$inputPath\"";
-
-        // Audio codec and quality settings
-        switch ($quality) {
-            case 'low':
-                $command .= " -b:a 128k";
+        // Use the same FFmpeg detection logic for command execution
+        $ffmpegCmd = 'ffmpeg';
+        
+        // Try to find the correct FFmpeg path
+        $testCommands = [
+            'ffmpeg',
+            'C:\Program Files\ffmpeg-2025-08-20-git-4d7c609be3-full_build\bin\ffmpeg.exe',
+            'C:\ffmpeg\bin\ffmpeg.exe',
+            'ffmpeg.exe'
+        ];
+        
+        foreach ($testCommands as $testCmd) {
+            $testOutput = [];
+            $testReturn = 0;
+            exec("\"$testCmd\" -version 2>&1", $testOutput, $testReturn);
+            if ($testReturn === 0) {
+                $ffmpegCmd = $testCmd;
                 break;
-            case 'high':
-                $command .= " -b:a 320k";
-                break;
-            case 'medium':
-            default:
-                $command .= " -b:a {$bitrate}k";
-                break;
+            }
         }
-
-        // Sample rate
-        $command .= " -ar $sampleRate";
-
-        // Channels
-        if ($channels === 'mono') {
-            $command .= " -ac 1";
+        
+        // Base command with detected FFmpeg path - handle spaces in path properly
+        if (strpos($ffmpegCmd, ' ') !== false && strpos($ffmpegCmd, '"') === false) {
+            $command = "\"$ffmpegCmd\" -i \"$inputPath\"";
         } else {
-            $command .= " -ac 2";
+            $command = "$ffmpegCmd -i \"$inputPath\"";
         }
 
-        // Tool-specific processing
-        switch ($tool) {
-            case 'mp3-to-wav':
-            case 'wav-to-mp3':
-            case 'flac-to-mp3':
-            case 'aac-to-mp3':
-            case 'ogg-to-mp3':
-            case 'mp3-to-flac':
-            case 'mp3-to-aac':
-            case 'wav-to-flac':
-                // Format conversion - handled by output extension
-                break;
-                
-            case 'compress-audio':
-                $command .= " -b:a 128k";
-                break;
-                
-            case 'noise-reduction':
-                $command .= " -af \"afftdn=nf=-25\"";
-                break;
+        // Handle tool-specific processing
+        if ($tool === 'compress-audio') {
+            // For compression, use the original format but with lower bitrate
+            $inputExtension = strtolower(pathinfo($inputPath, PATHINFO_EXTENSION));
+            $outputExtension = strtolower(pathinfo($outputPath, PATHINFO_EXTENSION));
+            
+            // Add format-specific parameters for compression
+            switch ($outputExtension) {
+                case 'wav':
+                    $command .= " -f wav -c:a pcm_s16le";
+                    break;
+                case 'flac':
+                    $command .= " -f flac -c:a flac -compression_level 8";
+                    break;
+                case 'aac':
+                    $command .= " -f aac -c:a aac -b:a 128k";
+                    break;
+                case 'ogg':
+                    $command .= " -f ogg -c:a libvorbis -q:a 3";
+                    break;
+                case 'mp3':
+                default:
+                    $command .= " -f mp3 -c:a libmp3lame -b:a 128k";
+                    break;
+            }
+        } else if ($tool === 'noise-reduction') {
+            // For noise reduction, preserve format but add noise reduction filter
+            $outputExtension = strtolower(pathinfo($outputPath, PATHINFO_EXTENSION));
+            
+            switch ($outputExtension) {
+                case 'wav':
+                    $command .= " -af \"highpass=f=200,lowpass=f=3000\" -f wav -c:a pcm_s16le";
+                    break;
+                case 'flac':
+                    $command .= " -af \"highpass=f=200,lowpass=f=3000\" -f flac -c:a flac";
+                    break;
+                case 'aac':
+                    $command .= " -af \"highpass=f=200,lowpass=f=3000\" -f aac -c:a aac";
+                    break;
+                case 'ogg':
+                    $command .= " -af \"highpass=f=200,lowpass=f=3000\" -f ogg -c:a libvorbis";
+                    break;
+                case 'mp3':
+                default:
+                    $command .= " -af \"highpass=f=200,lowpass=f=3000\" -f mp3 -c:a libmp3lame";
+                    break;
+            }
+        } else {
+            // Regular conversion tools
+            $outputExtension = pathinfo($outputPath, PATHINFO_EXTENSION);
+            
+            // Add format-specific parameters
+            switch (strtolower($outputExtension)) {
+                case 'wav':
+                    $command .= " -f wav -c:a pcm_s16le";
+                    break;
+                case 'flac':
+                    $command .= " -f flac -c:a flac";
+                    break;
+                case 'aac':
+                    $command .= " -f aac -c:a aac";
+                    break;
+                case 'ogg':
+                    $command .= " -f ogg -c:a libvorbis";
+                    break;
+                case 'mp3':
+                default:
+                    $command .= " -f mp3 -c:a libmp3lame";
+                    break;
+            }
+            
+            // Audio quality settings (only for lossy formats and non-enhancement tools)
+            if (!in_array(strtolower($outputExtension), ['wav', 'flac'])) {
+                switch ($quality) {
+                    case 'low':
+                        $command .= " -b:a 128k";
+                        break;
+                    case 'high':
+                        $command .= " -b:a 320k";
+                        break;
+                    case 'medium':
+                    default:
+                        $command .= " -b:a 192k";
+                        break;
+                }
+            }
         }
 
-        // Output file
+        // Sample rate and channels (for all tools)
+        $command .= " -ar $sampleRate";
+        $command .= " -ac " . ($channels === 'mono' ? '1' : '2');
+
+        // Overwrite output file
         $command .= " -y \"$outputPath\"";
+
+        Log::info("FFmpeg command built", [
+            'tool' => $tool,
+            'output_extension' => pathinfo($outputPath, PATHINFO_EXTENSION),
+            'command_preview' => substr($command, 0, 200) . '...'
+        ]);
 
         return $command;
     }
@@ -429,11 +542,24 @@ class AudioToolsController extends Controller
         return copy($inputPath, $outputPath);
     }
 
-    private function getOutputExtension($tool, $settings)
+    private function getOutputExtension($tool, $settings, $inputPath = null)
     {
-        // Determine output format based on tool
+        // For enhancement tools, preserve original format
+        if (in_array($tool, ['compress-audio', 'noise-reduction']) && $inputPath) {
+            $inputExtension = strtolower(pathinfo($inputPath, PATHINFO_EXTENSION));
+            Log::info("Enhancement tool preserving original format", [
+                'tool' => $tool,
+                'input_extension' => $inputExtension
+            ]);
+            return $inputExtension;
+        }
+        
+        // For conversion tools, return specific output format
         switch ($tool) {
             case 'mp3-to-wav':
+            case 'flac-to-wav':
+            case 'aac-to-wav':
+            case 'ogg-to-wav':
                 return 'wav';
             case 'wav-to-mp3':
             case 'flac-to-mp3':
@@ -442,14 +568,21 @@ class AudioToolsController extends Controller
                 return 'mp3';
             case 'mp3-to-flac':
             case 'wav-to-flac':
+            case 'aac-to-flac':
+            case 'ogg-to-flac':
                 return 'flac';
             case 'mp3-to-aac':
+            case 'wav-to-aac':
+            case 'flac-to-aac':
+            case 'ogg-to-aac':
                 return 'aac';
-            case 'compress-audio':
-            case 'noise-reduction':
-                return 'mp3'; // Enhancement tools keep MP3 format by default
+            case 'mp3-to-ogg':
+            case 'wav-to-ogg':
+            case 'flac-to-ogg':
+            case 'aac-to-ogg':
+                return 'ogg';
             default:
-                return 'mp3'; // Default to MP3
+                return 'mp3'; // Default fallback
         }
     }
 
@@ -482,16 +615,42 @@ class AudioToolsController extends Controller
 
             $originalName = $processing->original_filename;
             $extension = pathinfo($processing->converted_filename, PATHINFO_EXTENSION);
-            $downloadName = pathinfo($originalName, PATHINFO_FILENAME) . '_processed.' . $extension;
+            
+            // Remove any audio extension from original filename to avoid confusion
+            $baseName = pathinfo($originalName, PATHINFO_FILENAME);
+            $baseName = preg_replace('/\.(mp3|wav|flac|aac|ogg|m4a)$/i', '', $baseName);
+            
+            $downloadName = $baseName . '_processed.' . $extension;
 
             Log::info('Audio download starting', [
                 'path' => $filePath,
                 'download_name' => $downloadName,
+                'original_name' => $originalName,
+                'base_name' => $baseName,
+                'extension' => $extension,
                 'file_exists' => file_exists($filePath),
                 'file_size' => file_exists($filePath) ? filesize($filePath) : 0
             ]);
 
-            return response()->download($filePath, $downloadName);
+            // Force proper MIME type based on actual file extension
+            $mimeTypes = [
+                'wav' => 'audio/wav',
+                'aac' => 'audio/aac',
+                'flac' => 'audio/flac',
+                'mp3' => 'audio/mpeg',
+                'ogg' => 'audio/ogg',
+                'm4a' => 'audio/mp4'
+            ];
+            
+            $contentType = $mimeTypes[$extension] ?? 'application/octet-stream';
+            
+            return response()->download($filePath, $downloadName, [
+                'Content-Type' => $contentType,
+                'Content-Disposition' => 'attachment; filename="' . $downloadName . '"',
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'Pragma' => 'no-cache',
+                'Expires' => '0'
+            ]);
 
         } catch (\Exception $e) {
             Log::error('Audio download error', ['error' => $e->getMessage()]);

@@ -156,16 +156,51 @@ const AudioConverter = () => {
         setSelectedFiles(prev => [...prev, ...validFiles]);
     }, [selectedTool, toolCategories]);
 
+    // Get tool-specific accepted file types
+    const getAcceptedFileTypes = () => {
+        if (!selectedTool) return {};
+        
+        const tool = toolCategories
+            .flatMap(cat => cat.tools)
+            .find(t => t.id === selectedTool.id);
+            
+        if (!tool) return {};
+        
+        const acceptObject = {};
+        tool.formats.forEach(format => {
+            switch (format) {
+                case '.mp3':
+                    acceptObject['audio/mpeg'] = ['.mp3'];
+                    break;
+                case '.wav':
+                    acceptObject['audio/wav'] = ['.wav'];
+                    acceptObject['audio/x-wav'] = ['.wav'];
+                    break;
+                case '.flac':
+                    acceptObject['audio/flac'] = ['.flac'];
+                    acceptObject['audio/x-flac'] = ['.flac'];
+                    break;
+                case '.aac':
+                    acceptObject['audio/aac'] = ['.aac'];
+                    acceptObject['audio/x-aac'] = ['.aac'];
+                    break;
+                case '.m4a':
+                    acceptObject['audio/mp4'] = ['.m4a'];
+                    acceptObject['audio/x-m4a'] = ['.m4a'];
+                    break;
+                case '.ogg':
+                    acceptObject['audio/ogg'] = ['.ogg'];
+                    acceptObject['audio/x-ogg'] = ['.ogg'];
+                    break;
+            }
+        });
+        
+        return acceptObject;
+    };
+
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
-        accept: selectedTool ? {
-            'audio/mpeg': ['.mp3'],
-            'audio/wav': ['.wav'],
-            'audio/flac': ['.flac'],
-            'audio/aac': ['.aac'],
-            'audio/ogg': ['.ogg'],
-            'audio/x-ms-wma': ['.wma']
-        } : {},
+        accept: getAcceptedFileTypes(),
         multiple: true,
         maxSize: 100 * 1024 * 1024,
         disabled: !selectedTool
@@ -251,43 +286,12 @@ const AudioConverter = () => {
     const handleDownload = async (downloadUrl, filename) => {
         try {
             console.log('Attempting download:', downloadUrl);
+            console.log('Expected filename:', filename);
             
-            const response = await fetch(downloadUrl, {
-                method: 'GET',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                    'Accept': 'application/octet-stream',
-                },
-                credentials: 'same-origin'
-            });
-
-            console.log('Download response status:', response.status);
-            console.log('Download response headers:', Object.fromEntries(response.headers.entries()));
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Download failed with response:', errorText);
-                throw new Error(`Download failed: ${response.status} ${response.statusText}`);
-            }
-
-            const blob = await response.blob();
-            console.log('Downloaded blob size:', blob.size);
+            // Use direct window.location for download to avoid fetch issues
+            window.location.href = downloadUrl;
             
-            if (blob.size === 0) {
-                throw new Error('Downloaded file is empty');
-            }
-
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = filename || 'download';
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            
-            console.log('Download completed successfully');
+            console.log('Download initiated successfully');
         } catch (error) {
             console.error('Download error details:', error);
             alert(`Download failed: ${error.message}. Check console for details.`);
@@ -575,7 +579,7 @@ const AudioConverter = () => {
                                         </div>
                                         {result.status === 'completed' && result.download_url && (
                                             <button
-                                                onClick={() => handleDownload(result.download_url, result.filename)}
+                                                onClick={() => handleDownload(result.download_url, result.output_filename || result.filename)}
                                                 className={`w-full inline-flex items-center justify-center px-4 py-3 bg-gradient-to-r ${selectedTool.color} text-white font-medium rounded-lg hover:shadow-lg transition-all duration-200 transform hover:scale-105`}
                                             >
                                                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
