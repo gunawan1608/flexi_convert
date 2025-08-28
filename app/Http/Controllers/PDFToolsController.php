@@ -364,11 +364,19 @@ class PDFToolsController extends Controller
             $outputFileName = 'images_to_pdf_' . time() . '.pdf';
             $outputPath = 'pdf-tools/outputs/' . $outputFileName;
             
+            // Get first file name for display
+            $firstFileName = $files[0]->getClientOriginalName();
+            $fileCount = count($files);
+            $displayName = $fileCount > 1 ? $firstFileName . " (+ " . ($fileCount - 1) . " more)" : $firstFileName;
+            
+            // Determine the correct tool name based on the actual tool being used
+            $toolName = request()->input('tool', 'image-to-pdf');
+            
             // Create database record
             $processing = PdfProcessing::create([
                 'user_id' => auth()->id() ?? 1,
-                'tool_name' => 'images-to-pdf',
-                'original_filename' => count($files) . ' images',
+                'tool_name' => $toolName,
+                'original_filename' => $displayName,
                 'processed_filename' => $outputFileName,
                 'file_size' => array_sum(array_map(fn($f) => $f->getSize(), $files)),
                 'status' => 'processing',

@@ -130,6 +130,8 @@ class DashboardController extends Controller
             'html-to-pdf' => 'pdf',
             'jpg-to-pdf' => 'pdf',
             'png-to-pdf' => 'pdf',
+            'image-to-pdf' => 'pdf',
+            'images-to-pdf' => 'pdf',
             'pdf-to-word' => 'docx',
             'pdf-to-excel' => 'xlsx',
             'pdf-to-ppt' => 'pptx',
