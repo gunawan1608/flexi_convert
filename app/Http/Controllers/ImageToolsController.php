@@ -28,7 +28,7 @@ class ImageToolsController extends Controller
                 'tool' => 'required|string',
                 'files' => 'required|array|min:1',
                 'files.*' => 'required|file|max:51200',
-                'settings' => 'nullable|string'
+                'settings' => 'nullable|array'
             ]);
 
             $tool = $validated['tool'];
@@ -37,27 +37,23 @@ class ImageToolsController extends Controller
             // Enhanced file validation for specific tools
             $this->validateFileTypesForTool($tool, $files);
             
-            $settingsJson = $validated['settings'] ?? '{}';
+            $settings = $validated['settings'] ?? [];
             
-            // Enhanced JSON parsing with error handling
-            $settings = [];
-            if (!empty($settingsJson) && $settingsJson !== '{}') {
-                try {
-                    $decoded = json_decode($settingsJson, true, 512, JSON_THROW_ON_ERROR);
-                    $settings = is_array($decoded) ? $decoded : [];
-                } catch (JsonException $e) {
-                    Log::warning("Invalid JSON in settings: " . $e->getMessage(), [
-                        'settings_raw' => $settingsJson,
-                        'tool' => $tool
-                    ]);
-                    $settings = [];
-                }
+            // Ensure settings is an array
+            if (!is_array($settings)) {
+                $settings = [];
             }
+            
+            Log::info('Settings received', [
+                'settings' => $settings,
+                'tool' => $tool
+            ]);
 
             Log::info("Processing Image tool: {$tool}", [
                 'files_count' => count($files),
                 'settings' => $settings,
-                'user_id' => auth()->id() ?? 'guest'
+                'user_id' => auth()->id() ?? 'guest',
+                'tool_mapping_debug' => "Tool '{$tool}' will be processed"
             ]);
 
             $results = [];
@@ -237,9 +233,14 @@ class ImageToolsController extends Controller
             Log::info("Input file stored", ['path' => $inputPath]);
 
             // Process based on tool type
+            Log::info("About to process with tool", ['tool' => $tool, 'input_path' => $inputPath]);
             $outputPath = $this->processWithTool($inputPath, $tool, $settings, $uniqueId, $filename);
             $outputFilename = basename($outputPath);
-            Log::info("File processed successfully", ['output_path' => $outputPath]);
+            Log::info("File processed successfully", [
+                'tool' => $tool,
+                'output_path' => $outputPath,
+                'output_filename' => $outputFilename
+            ]);
 
             // Update processing record
             $processing->update([
@@ -257,6 +258,7 @@ class ImageToolsController extends Controller
                 'filename' => $originalName,
                 'status' => 'completed',
                 'download_url' => route('image-tools.download', ['id' => $processing->id]),
+                'output_path' => $outputPath,
                 'output_filename' => $outputFilename
             ];
 
@@ -285,8 +287,25 @@ class ImageToolsController extends Controller
         
         // Determine output extension based on tool
         $outputExtension = $this->getOutputExtension($tool);
-        $outputFilename = $uniqueId . '_processed.' . $outputExtension;
+        
+        // If no specific extension (processing tools), preserve original
+        if ($outputExtension === null) {
+            $outputExtension = pathinfo($inputPath, PATHINFO_EXTENSION);
+        }
+        
+        // Generate output filename with correct extension - force .png for conversion tools
+        if (in_array($tool, ['jpg-to-png', 'webp-to-png'])) {
+            $outputExtension = 'png'; // Force PNG extension
+        }
+        
+        $outputFilename = $uniqueId . '_output.' . $outputExtension;
         $outputPath = 'image-tools/outputs/' . $outputFilename;
+        
+        Log::info("Output path determined", [
+            'tool' => $tool,
+            'output_extension' => $outputExtension,
+            'output_path' => $outputPath
+        ]);
         $tempOutputPath = storage_path('app/' . $outputPath);
         
         // Ensure output directory exists
@@ -303,6 +322,18 @@ class ImageToolsController extends Controller
             $this->processImage($tempInputPath, $tempOutputPath, $tool, $settings);
         }
         
+        // Verify output file exists and has content
+        if (!file_exists($tempOutputPath) || filesize($tempOutputPath) === 0) {
+            throw new \Exception("Output file was not created or is empty: {$tempOutputPath}");
+        }
+        
+        Log::info("Image processing completed", [
+            'tool' => $tool,
+            'input_extension' => pathinfo($tempInputPath, PATHINFO_EXTENSION),
+            'output_extension' => $outputExtension,
+            'output_size' => filesize($tempOutputPath)
+        ]);
+        
         return $outputPath;
     }
 
@@ -312,24 +343,43 @@ class ImageToolsController extends Controller
     private function processWithImageMagick($inputPath, $outputPath, $tool, $settings)
     {
         try {
+            Log::info("ImageMagick processing started", [
+                'tool' => $tool,
+                'input_path' => $inputPath,
+                'output_path' => $outputPath
+            ]);
+            
             switch ($tool) {
-                // Format conversions
+                // Format conversions - Use specific methods for better control
                 case 'jpg-to-png':
-                    return ImageToolsHelperMethods::convertImageFormat($inputPath, $outputPath, 'png', $settings);
+                    Log::info("Using jpgToPng method");
+                    return ImageToolsHelperMethods::jpgToPng($inputPath, $outputPath, $settings);
                 case 'png-to-jpg':
-                    return ImageToolsHelperMethods::convertImageFormat($inputPath, $outputPath, 'jpg', $settings);
+                    Log::info("Using pngToJpg method");
+                    return ImageToolsHelperMethods::pngToJpg($inputPath, $outputPath, $settings);
                 case 'webp-to-jpg':
+                    Log::info("Using convertImageFormat for webp-to-jpg");
                     return ImageToolsHelperMethods::convertImageFormat($inputPath, $outputPath, 'jpg', $settings);
+                case 'webp-to-png':
+                    Log::info("Using webpToPng method");
+                    return ImageToolsHelperMethods::webpToPng($inputPath, $outputPath, $settings);
                 case 'jpg-to-webp':
+                    Log::info("Using convertImageFormat for jpg-to-webp");
                     return ImageToolsHelperMethods::convertImageFormat($inputPath, $outputPath, 'webp', $settings);
                 case 'png-to-webp':
-                    return ImageToolsHelperMethods::convertImageFormat($inputPath, $outputPath, 'webp', $settings);
+                    Log::info("Using pngToWebp method");
+                    return ImageToolsHelperMethods::pngToWebp($inputPath, $outputPath, $settings);
                 case 'gif-to-jpg':
                     return ImageToolsHelperMethods::convertImageFormat($inputPath, $outputPath, 'jpg', $settings);
+                case 'gif-to-png':
+                    return ImageToolsHelperMethods::convertImageFormat($inputPath, $outputPath, 'png', $settings);
                 case 'bmp-to-jpg':
                     return ImageToolsHelperMethods::convertImageFormat($inputPath, $outputPath, 'jpg', $settings);
                 case 'tiff-to-jpg':
                     return ImageToolsHelperMethods::convertImageFormat($inputPath, $outputPath, 'jpg', $settings);
+                case 'compress-image':
+                case 'optimize-web':
+                    return ImageToolsHelperMethods::optimizeImage($inputPath, $outputPath, $settings);
 
                 // Resize operations
                 case 'resize-custom':
@@ -365,8 +415,30 @@ class ImageToolsController extends Controller
 
                 // Rotation
                 case 'rotate':
-                    $angle = $settings['angle'] ?? 90;
+                case 'rotate-image':
+                    $angle = floatval($settings['angle'] ?? 90);
+                    
+                    Log::info('Rotate settings received', [
+                        'angle' => $angle
+                    ]);
+                    
                     return ImageToolsHelperMethods::rotateImage($inputPath, $outputPath, $angle, $settings);
+                
+                // Resize operations
+                case 'resize-image':
+                    $width = intval($settings['width'] ?? 800);
+                    $height = intval($settings['height'] ?? 600);
+                    $maintainAspectRatio = filter_var($settings['maintainAspectRatio'] ?? true, FILTER_VALIDATE_BOOLEAN);
+                    
+                    Log::info('Resize settings received', [
+                        'width' => $width,
+                        'height' => $height,
+                        'maintainAspectRatio' => $maintainAspectRatio
+                    ]);
+                    
+                    return ImageToolsHelperMethods::resizeImage($inputPath, $outputPath, $width, $height, array_merge($settings, [
+                        'maintainAspectRatio' => $maintainAspectRatio
+                    ]));
 
                 // Effects
                 case 'grayscale':
@@ -399,9 +471,9 @@ class ImageToolsController extends Controller
                     return ImageToolsHelperMethods::createThumbnail($inputPath, $outputPath, $size, $settings);
 
                 default:
-                    // For unknown tools, just copy with format conversion if needed
-                    $outputFormat = $this->getOutputExtension($tool);
-                    return ImageToolsHelperMethods::convertImageFormat($inputPath, $outputPath, $outputFormat, $settings);
+                    // For unknown tools, preserve original format
+                    $originalFormat = pathinfo($inputPath, PATHINFO_EXTENSION);
+                    return ImageToolsHelperMethods::convertImageFormat($inputPath, $outputPath, $originalFormat, $settings);
             }
         } catch (Exception $e) {
             Log::error("ImageMagick processing failed for tool {$tool}: " . $e->getMessage());
@@ -450,30 +522,56 @@ class ImageToolsController extends Controller
     private function getOutputExtension($tool)
     {
         $extensionMap = [
+            // Format conversions - MUST return target format
             'jpg-to-png' => 'png',
-            'png-to-jpg' => 'jpg',
+            'png-to-jpg' => 'jpg', 
             'webp-to-jpg' => 'jpg',
             'jpg-to-webp' => 'webp',
             'png-to-webp' => 'webp',
             'gif-to-jpg' => 'jpg',
+            'gif-to-png' => 'png',
             'bmp-to-jpg' => 'jpg',
             'tiff-to-jpg' => 'jpg',
+            // Processing tools - preserve original format
+            'resize-custom' => null,
+            'resize-percentage' => null,
+            'resize-preset' => null,
+            'rotate' => null,
+            'crop' => null,
+            'grayscale' => null,
+            'blur' => null,
+            'brightness' => null,
+            'contrast' => null,
+            'sepia' => null,
+            'sharpen' => null,
+            'emboss' => null,
+            'edge' => null,
+            'oil-paint' => null,
+            'negative' => null,
+            'watermark' => null,
+            'optimize' => null,
+            'thumbnail' => null,
+            'compress-image' => null,
+            'optimize-web' => null
         ];
         
-        // For tools that don't change format, keep original
-        if (isset($extensionMap[$tool])) {
+        // Return specific target format for conversion tools
+        if (isset($extensionMap[$tool]) && $extensionMap[$tool] !== null) {
             return $extensionMap[$tool];
         }
         
-        // Default to jpg for processing tools
-        return 'jpg';
+        // For processing tools (null value), preserve original format
+        return null; // Will be determined from input file
     }
 
     private function applyImageProcessing($sourceImage, $tool, $settings, $originalWidth, $originalHeight)
     {
         switch ($tool) {
-            // Format conversions - return source image as-is, format change happens in save
+            // Format conversions - handle transparency and proper format conversion
             case 'jpg-to-png':
+                return $this->convertJpgToPng($sourceImage, $originalWidth, $originalHeight);
+            case 'webp-to-png':
+                return $this->convertWebpToPng($sourceImage, $originalWidth, $originalHeight);
             case 'png-to-jpg':
             case 'webp-to-jpg':
             case 'jpg-to-webp':
@@ -607,21 +705,91 @@ class ImageToolsController extends Controller
             default => 85
         };
         
+        // Check GD function support before using
         switch ($outputExtension) {
             case 'jpg':
             case 'jpeg':
+                if (!function_exists('imagejpeg')) {
+                    throw new \Exception('JPEG support not available in GD');
+                }
                 return imagejpeg($image, $outputPath, $qualityValue);
             case 'png':
+                if (!function_exists('imagepng')) {
+                    throw new \Exception('PNG support not available in GD');
+                }
                 // PNG compression level (0-9, where 9 is max compression)
                 $pngCompression = 9 - intval($qualityValue / 10);
                 return imagepng($image, $outputPath, $pngCompression);
             case 'webp':
+                if (!function_exists('imagewebp')) {
+                    throw new \Exception('WebP support not available in GD');
+                }
                 return imagewebp($image, $outputPath, $qualityValue);
             case 'gif':
+                if (!function_exists('imagegif')) {
+                    throw new \Exception('GIF support not available in GD');
+                }
                 return imagegif($image, $outputPath);
             default:
+                if (!function_exists('imagejpeg')) {
+                    throw new \Exception('JPEG support not available in GD');
+                }
                 return imagejpeg($image, $outputPath, $qualityValue);
         }
+    }
+
+    /**
+     * Convert JPG to PNG with proper transparency handling
+     */
+    private function convertJpgToPng($sourceImage, $width, $height)
+    {
+        // Create new PNG image with transparency support
+        $pngImage = imagecreatetruecolor($width, $height);
+        
+        // Enable alpha blending and save alpha channel
+        imagealphablending($pngImage, false);
+        imagesavealpha($pngImage, true);
+        
+        // Fill with transparent background
+        $transparent = imagecolorallocatealpha($pngImage, 0, 0, 0, 127);
+        imagefill($pngImage, 0, 0, $transparent);
+        
+        // Copy source image to PNG with transparency
+        imagealphablending($pngImage, true);
+        imagecopy($pngImage, $sourceImage, 0, 0, 0, 0, $width, $height);
+        
+        // Restore alpha settings for final save
+        imagealphablending($pngImage, false);
+        imagesavealpha($pngImage, true);
+        
+        return $pngImage;
+    }
+
+    /**
+     * Convert WebP to PNG with proper format conversion
+     */
+    private function convertWebpToPng($sourceImage, $width, $height)
+    {
+        // Create new PNG image with transparency support
+        $pngImage = imagecreatetruecolor($width, $height);
+        
+        // Enable alpha blending and save alpha channel
+        imagealphablending($pngImage, false);
+        imagesavealpha($pngImage, true);
+        
+        // Fill with transparent background
+        $transparent = imagecolorallocatealpha($pngImage, 0, 0, 0, 127);
+        imagefill($pngImage, 0, 0, $transparent);
+        
+        // Copy source image to PNG with transparency
+        imagealphablending($pngImage, true);
+        imagecopy($pngImage, $sourceImage, 0, 0, 0, 0, $width, $height);
+        
+        // Restore alpha settings for final save
+        imagealphablending($pngImage, false);
+        imagesavealpha($pngImage, true);
+        
+        return $pngImage;
     }
 
     private function createImageFromFile($filePath)

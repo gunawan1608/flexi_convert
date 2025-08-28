@@ -55,24 +55,33 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(PdfProcessing::class);
     }
 
+    public function imageProcessings(): HasMany
+    {
+        return $this->hasMany(ImageProcessing::class);
+    }
+
     public function getTotalProcessingsAttribute()
     {
-        return $this->pdfProcessings()->count();
+        return $this->pdfProcessings()->count() + $this->imageProcessings()->count();
     }
 
     public function getCompletedProcessingsAttribute()
     {
-        return $this->pdfProcessings()->completed()->count();
+        return $this->pdfProcessings()->where('status', 'completed')->count() + 
+               $this->imageProcessings()->where('status', 'completed')->count();
     }
 
     public function getTodayProcessingsAttribute()
     {
-        return $this->pdfProcessings()->today()->count();
+        return $this->pdfProcessings()->whereDate('created_at', today())->count() + 
+               $this->imageProcessings()->whereDate('created_at', today())->count();
     }
 
     public function getStorageUsedAttribute()
     {
-        return $this->pdfProcessings()->sum('file_size') + $this->pdfProcessings()->sum('processed_file_size');
+        $pdfStorage = $this->pdfProcessings()->sum('file_size') + $this->pdfProcessings()->sum('processed_file_size');
+        $imageStorage = $this->imageProcessings()->sum('file_size') + $this->imageProcessings()->sum('processed_file_size');
+        return $pdfStorage + $imageStorage;
     }
 
     public function getStorageUsedHumanAttribute(): string

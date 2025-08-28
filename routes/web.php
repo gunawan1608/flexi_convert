@@ -104,13 +104,13 @@ Route::middleware(['auth'])->group(function () {
     // Audio Tools API routes
     Route::prefix('api/audio-tools')->name('audio-tools.')->group(function () {
         Route::post('/process', [App\Http\Controllers\AudioToolsController::class, 'process'])->name('process');
-        Route::get('/download/{filename}', [App\Http\Controllers\AudioToolsController::class, 'download'])->name('download');
+        Route::get('/download/{id}', [App\Http\Controllers\AudioToolsController::class, 'download'])->name('download');
     });
     
     // Video Tools API routes
     Route::prefix('api/video-tools')->name('video-tools.')->group(function () {
         Route::post('/process', [App\Http\Controllers\VideoToolsController::class, 'process'])->name('process');
-        Route::get('/download/{filename}', [App\Http\Controllers\VideoToolsController::class, 'download'])->name('download');
+        Route::get('/download/{id}', [App\Http\Controllers\VideoToolsController::class, 'download'])->name('download');
     });
     
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');

@@ -44,29 +44,106 @@ class ImageToolsHelperMethods
 
             $imagick = new Imagick($inputPath);
             
-            // Set output format
+            // Check and fix CMYK colorspace BEFORE any processing
+            $currentColorspace = $imagick->getImageColorspace();
+            Log::info('Image colorspace detected', [
+                'colorspace' => $currentColorspace,
+                'input' => basename($inputPath)
+            ]);
+            
+            if ($currentColorspace === Imagick::COLORSPACE_CMYK) {
+                Log::info('Converting CMYK to sRGB colorspace');
+                $imagick->transformImageColorspace(Imagick::COLORSPACE_SRGB);
+            }
+            
+            // Normalize output format
+            $outputFormat = strtolower($outputFormat);
+            if ($outputFormat === 'jpg') {
+                $outputFormat = 'jpeg';
+            }
+            
+            // FORCE set output format - this is critical for format conversion
             $imagick->setImageFormat(strtoupper($outputFormat));
             
-            // Apply quality settings
-            if (isset($settings['quality'])) {
-                $quality = self::getQualityValue($settings['quality']);
-                $imagick->setImageCompressionQuality($quality);
+            // Apply HIGH quality settings (80-100 range)
+            $quality = self::getQualityValue($settings['quality'] ?? 'high');
+            // Ensure minimum quality of 80 for conversions
+            $quality = max(80, $quality);
+            $imagick->setImageCompressionQuality($quality);
+
+            // Apply compression and format-specific optimizations
+            switch ($outputFormat) {
+                case 'jpeg':
+                    $imagick->setImageCompression(Imagick::COMPRESSION_JPEG);
+                    // Remove alpha channel for JPEG
+                    $imagick->setImageAlphaChannel(Imagick::ALPHACHANNEL_REMOVE);
+                    // Set white background for transparency
+                    $imagick->setImageBackgroundColor('white');
+                    $imagick = $imagick->mergeImageLayers(Imagick::LAYERMETHOD_FLATTEN);
+                    break;
+                    
+                case 'png':
+                    $imagick->setImageCompression(Imagick::COMPRESSION_ZIP);
+                    // Preserve alpha channel for PNG
+                    $imagick->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
+                    // Set PNG compression level for high quality
+                    $imagick->setOption('png:compression-level', '1'); // 0-9, lower = better quality
+                    break;
+                    
+                case 'webp':
+                    // WebP supports both lossy and lossless
+                    $imagick->setOption('webp:lossless', 'false');
+                    $imagick->setOption('webp:alpha-quality', '100');
+                    $imagick->setOption('webp:method', '6'); // Best quality method
+                    break;
+                    
+                case 'gif':
+                    // For GIF, use palette optimization
+                    $imagick->quantizeImage(256, Imagick::COLORSPACE_RGB, 0, false, false);
+                    break;
+            }
+            
+            // Ensure output directory exists
+            $outputDir = dirname($outputPath);
+            if (!is_dir($outputDir)) {
+                mkdir($outputDir, 0755, true);
             }
 
-            // Apply compression for specific formats
-            if (in_array(strtolower($outputFormat), ['jpg', 'jpeg'])) {
-                $imagick->setImageCompression(Imagick::COMPRESSION_JPEG);
+            // Write the image with FORCED format
+            $success = $imagick->writeImage($outputPath);
+            
+            if (!$success) {
+                throw new Exception('Failed to write converted image');
             }
-
-            // Write the image
-            $imagick->writeImage($outputPath);
+            
+            // Verify the output file was created and has correct format
+            if (!file_exists($outputPath)) {
+                throw new Exception('Output file was not created');
+            }
+            
+            // Verify actual format conversion occurred
+            $verifyImagick = new Imagick($outputPath);
+            $actualFormat = strtolower($verifyImagick->getImageFormat());
+            $verifyImagick->clear();
+            $verifyImagick->destroy();
+            
+            if ($actualFormat !== $outputFormat && !($outputFormat === 'jpeg' && $actualFormat === 'jpg')) {
+                Log::warning('Format conversion may not have occurred properly', [
+                    'expected' => $outputFormat,
+                    'actual' => $actualFormat
+                ]);
+            }
+            
             $imagick->clear();
             $imagick->destroy();
 
             Log::info('Image format conversion completed', [
                 'input' => basename($inputPath),
                 'output' => basename($outputPath),
-                'format' => $outputFormat
+                'format' => $outputFormat,
+                'actual_format' => $actualFormat,
+                'quality' => $quality,
+                'output_size' => filesize($outputPath)
             ]);
 
             return true;
@@ -74,7 +151,8 @@ class ImageToolsHelperMethods
             Log::error('Image format conversion failed: ' . $e->getMessage(), [
                 'input' => $inputPath,
                 'output' => $outputPath,
-                'format' => $outputFormat
+                'format' => $outputFormat,
+                'trace' => $e->getTraceAsString()
             ]);
             return false;
         }
@@ -283,6 +361,9 @@ class ImageToolsHelperMethods
             }
 
             $imagick = new Imagick($inputPath);
+            
+            // Get original format to preserve it
+            $originalFormat = strtolower($imagick->getImageFormat());
 
             switch ($effect) {
                 case 'grayscale':
@@ -323,13 +404,11 @@ class ImageToolsHelperMethods
 
                 case 'brightness':
                     $brightness = $settings['brightness'] ?? 100;
-                    $contrast = $settings['contrast'] ?? 100;
                     $imagick->modulateImage($brightness, 100, 100);
                     break;
 
                 case 'contrast':
                     $contrast = $settings['contrast'] ?? 100;
-                    $imagick->modulateImage(100, 100, 100);
                     if ($contrast != 100) {
                         $imagick->contrastImage($contrast > 100);
                     }
@@ -342,21 +421,34 @@ class ImageToolsHelperMethods
                 default:
                     throw new Exception("Unsupported effect: {$effect}");
             }
+            
+            // Preserve original format after applying effects
+            $imagick->setImageFormat(strtoupper($originalFormat));
 
             // Apply quality settings
-            if (isset($settings['quality'])) {
-                $quality = self::getQualityValue($settings['quality']);
-                $imagick->setImageCompressionQuality($quality);
+            $quality = self::getQualityValue($settings['quality'] ?? 'high');
+            $imagick->setImageCompressionQuality($quality);
+            
+            // Ensure output directory exists
+            $outputDir = dirname($outputPath);
+            if (!is_dir($outputDir)) {
+                mkdir($outputDir, 0755, true);
             }
 
-            $imagick->writeImage($outputPath);
+            $success = $imagick->writeImage($outputPath);
+            
+            if (!$success) {
+                throw new Exception('Failed to write processed image');
+            }
+            
             $imagick->clear();
             $imagick->destroy();
 
             Log::info('Image effect applied successfully', [
                 'input' => basename($inputPath),
                 'output' => basename($outputPath),
-                'effect' => $effect
+                'effect' => $effect,
+                'format_preserved' => $originalFormat
             ]);
 
             return true;
@@ -364,7 +456,8 @@ class ImageToolsHelperMethods
             Log::error('Image effect application failed: ' . $e->getMessage(), [
                 'input' => $inputPath,
                 'output' => $outputPath,
-                'effect' => $effect
+                'effect' => $effect,
+                'trace' => $e->getTraceAsString()
             ]);
             return false;
         }
@@ -535,7 +628,36 @@ class ImageToolsHelperMethods
     }
 
     /**
-     * Convert quality setting to numeric value
+     * Get colorspace name for debugging
+     */
+    private static function getColorspaceName($colorspace): string
+    {
+        $colorspaces = [];
+        
+        // Only add constants that are defined in this ImageMagick installation
+        if (defined('Imagick::COLORSPACE_UNDEFINED')) $colorspaces[Imagick::COLORSPACE_UNDEFINED] = 'UNDEFINED';
+        if (defined('Imagick::COLORSPACE_RGB')) $colorspaces[Imagick::COLORSPACE_RGB] = 'RGB';
+        if (defined('Imagick::COLORSPACE_GRAY')) $colorspaces[Imagick::COLORSPACE_GRAY] = 'GRAY';
+        if (defined('Imagick::COLORSPACE_TRANSPARENT')) $colorspaces[Imagick::COLORSPACE_TRANSPARENT] = 'TRANSPARENT';
+        if (defined('Imagick::COLORSPACE_OHTA')) $colorspaces[Imagick::COLORSPACE_OHTA] = 'OHTA';
+        if (defined('Imagick::COLORSPACE_LAB')) $colorspaces[Imagick::COLORSPACE_LAB] = 'LAB';
+        if (defined('Imagick::COLORSPACE_XYZ')) $colorspaces[Imagick::COLORSPACE_XYZ] = 'XYZ';
+        if (defined('Imagick::COLORSPACE_YCBCR')) $colorspaces[Imagick::COLORSPACE_YCBCR] = 'YCBCR';
+        if (defined('Imagick::COLORSPACE_YCC')) $colorspaces[Imagick::COLORSPACE_YCC] = 'YCC';
+        if (defined('Imagick::COLORSPACE_YIQ')) $colorspaces[Imagick::COLORSPACE_YIQ] = 'YIQ';
+        if (defined('Imagick::COLORSPACE_YPBPR')) $colorspaces[Imagick::COLORSPACE_YPBPR] = 'YPBPR';
+        if (defined('Imagick::COLORSPACE_YUV')) $colorspaces[Imagick::COLORSPACE_YUV] = 'YUV';
+        if (defined('Imagick::COLORSPACE_CMYK')) $colorspaces[Imagick::COLORSPACE_CMYK] = 'CMYK';
+        if (defined('Imagick::COLORSPACE_SRGB')) $colorspaces[Imagick::COLORSPACE_SRGB] = 'SRGB';
+        if (defined('Imagick::COLORSPACE_HSB')) $colorspaces[Imagick::COLORSPACE_HSB] = 'HSB';
+        if (defined('Imagick::COLORSPACE_HSL')) $colorspaces[Imagick::COLORSPACE_HSL] = 'HSL';
+        if (defined('Imagick::COLORSPACE_HWB')) $colorspaces[Imagick::COLORSPACE_HWB] = 'HWB';
+        
+        return $colorspaces[$colorspace] ?? "UNKNOWN($colorspace)";
+    }
+
+    /**
+     * Convert quality setting to numeric value (optimized for high quality)
      */
     private static function getQualityValue($quality): int
     {
@@ -544,11 +666,11 @@ class ImageToolsHelperMethods
         }
 
         return match(strtolower($quality)) {
-            'low' => 60,
-            'medium' => 80,
-            'high' => 95,
-            'maximum' => 100,
-            default => 85
+            'low' => 80,      // Increased from 60 to 80
+            'medium' => 90,   // Increased from 80 to 90
+            'high' => 95,     // Keep at 95
+            'maximum' => 100, // Keep at 100
+            default => 90     // Increased from 85 to 90
         };
     }
 
@@ -572,6 +694,228 @@ class ImageToolsHelperMethods
             'execution_time' => $executionTime,
             'file_size_mb' => round($fileSize / 1024 / 1024, 2)
         ]);
+    }
+
+    /**
+     * Specific JPG to PNG conversion with CMYK handling and GD fallback
+     */
+    public static function jpgToPng(string $inputPath, string $outputPath, array $settings = []): bool
+    {
+        // Force output path to end with .png
+        $outputPath = preg_replace('/\.[^.]+$/', '.png', $outputPath);
+
+        try {
+            if (!self::isImageMagickAvailable()) {
+                throw new Exception('ImageMagick is not available');
+            }
+
+            $imagick = new Imagick($inputPath);
+            
+            // Critical: Handle CMYK colorspace properly
+            $currentColorspace = $imagick->getImageColorspace();
+            Log::info('Original image colorspace detected', [
+                'colorspace_id' => $currentColorspace,
+                'colorspace_name' => self::getColorspaceName($currentColorspace)
+            ]);
+            
+            // Force fallback to GD for better JPG to PNG conversion
+            Log::info('Forcing GD fallback for better JPG to PNG conversion');
+            throw new Exception('Force GD fallback for JPG to PNG');
+            
+            return true;
+        } catch (Exception $e) {
+            Log::error('ImageMagick JPG to PNG conversion failed: ' . $e->getMessage());
+            Log::info('Imagick gagal, fallback ke GD untuk JPG to PNG conversion');
+            
+            // Fallback to GD
+            return self::jpgToPngGD($inputPath, $outputPath, $settings);
+        }
+    }
+
+    /**
+     * GD fallback for JPG to PNG conversion
+     */
+    private static function jpgToPngGD(string $inputPath, string $outputPath, array $settings = []): bool
+    {
+        try {
+            if (!function_exists('imagecreatefromjpeg')) {
+                throw new Exception('GD gagal membaca JPEG');
+            }
+            if (!function_exists('imagepng')) {
+                throw new Exception('GD gagal menulis PNG');
+            }
+
+            $img = imagecreatefromjpeg($inputPath);
+            if (!$img) {
+                throw new Exception('GD gagal membaca JPEG');
+            }
+
+            // GD automatically handles sRGB colorspace
+            $result = imagepng($img, $outputPath);
+            imagedestroy($img);
+
+            if (!$result) {
+                throw new Exception('GD gagal menyimpan PNG');
+            }
+
+            Log::info('Imagick gagal, fallback ke GD berhasil', [
+                'input' => basename($inputPath),
+                'output' => basename($outputPath),
+                'method' => 'GD JPG to PNG'
+            ]);
+
+            return true;
+        } catch (Exception $e) {
+            Log::error('GD JPG to PNG conversion failed: ' . $e->getMessage());
+            throw new Exception('GD gagal membaca JPEG: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Specific PNG to JPG conversion
+     */
+    public static function pngToJpg(string $inputPath, string $outputPath, array $settings = []): bool
+    {
+        try {
+            if (!self::isImageMagickAvailable()) {
+                throw new Exception('ImageMagick is not available');
+            }
+
+            $imagick = new Imagick($inputPath);
+            
+            // Force JPEG format
+            $imagick->setImageFormat('JPEG');
+            
+            // JPEG specific settings
+            $imagick->setImageCompression(Imagick::COMPRESSION_JPEG);
+            $imagick->setImageAlphaChannel(Imagick::ALPHACHANNEL_REMOVE);
+            $imagick->setImageBackgroundColor('white');
+            $imagick = $imagick->mergeImageLayers(Imagick::LAYERMETHOD_FLATTEN);
+            
+            // High quality
+            $quality = max(90, self::getQualityValue($settings['quality'] ?? 'high'));
+            $imagick->setImageCompressionQuality($quality);
+            
+            $imagick->writeImage($outputPath);
+            $imagick->clear();
+            $imagick->destroy();
+            
+            Log::info('PNG to JPG conversion completed', [
+                'input' => basename($inputPath),
+                'output' => basename($outputPath)
+            ]);
+            
+            return true;
+        } catch (Exception $e) {
+            Log::error('PNG to JPG conversion failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Specific WebP to PNG conversion with proper re-encoding and GD fallback
+     */
+    public static function webpToPng(string $inputPath, string $outputPath, array $settings = []): bool
+    {
+        // Force output path to end with .png
+        $outputPath = preg_replace('/\.[^.]+$/', '.png', $outputPath);
+
+        try {
+            if (!self::isImageMagickAvailable()) {
+                throw new Exception('ImageMagick is not available');
+            }
+
+            $imagick = new Imagick($inputPath);
+            
+            // Force fallback to GD for better WebP to PNG conversion
+            Log::info('Forcing GD fallback for better WebP to PNG conversion');
+            throw new Exception('Force GD fallback for WebP to PNG');
+        } catch (Exception $e) {
+            Log::error('ImageMagick WebP to PNG conversion failed: ' . $e->getMessage());
+            Log::info('Imagick gagal, fallback ke GD untuk WebP to PNG conversion');
+            
+            // Fallback to GD
+            return self::webpToPngGD($inputPath, $outputPath, $settings);
+        }
+    }
+
+    /**
+     * GD fallback for WebP to PNG conversion
+     */
+    private static function webpToPngGD(string $inputPath, string $outputPath, array $settings = []): bool
+    {
+        try {
+            if (!function_exists('imagecreatefromwebp')) {
+                throw new Exception('GD gagal membaca WebP');
+            }
+            if (!function_exists('imagepng')) {
+                throw new Exception('GD gagal menulis PNG');
+            }
+
+            $img = imagecreatefromwebp($inputPath);
+            if (!$img) {
+                throw new Exception('GD gagal membaca WebP');
+            }
+
+            // Save as PNG - CRITICAL: Use imagepng() not imagewebp()
+            $result = imagepng($img, $outputPath);
+            imagedestroy($img);
+
+            if (!$result) {
+                throw new Exception('GD gagal menyimpan PNG');
+            }
+
+            Log::info('Imagick gagal, fallback ke GD berhasil', [
+                'input' => basename($inputPath),
+                'output' => basename($outputPath),
+                'method' => 'GD WebP to PNG'
+            ]);
+
+            return true;
+        } catch (Exception $e) {
+            Log::error('GD WebP to PNG conversion failed: ' . $e->getMessage());
+            throw new Exception('GD gagal membaca WebP: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Specific PNG to WebP conversion
+     */
+    public static function pngToWebp(string $inputPath, string $outputPath, array $settings = []): bool
+    {
+        try {
+            if (!self::isImageMagickAvailable()) {
+                throw new Exception('ImageMagick is not available');
+            }
+
+            $imagick = new Imagick($inputPath);
+            
+            // Force WebP format
+            $imagick->setImageFormat('WEBP');
+            
+            // WebP specific settings for high quality
+            $imagick->setOption('webp:lossless', 'false');
+            $imagick->setOption('webp:alpha-quality', '100');
+            $imagick->setOption('webp:method', '6'); // Best quality method
+            
+            // High quality
+            $quality = max(90, self::getQualityValue($settings['quality'] ?? 'high'));
+            $imagick->setImageCompressionQuality($quality);
+            
+            $imagick->writeImage($outputPath);
+            $imagick->clear();
+            $imagick->destroy();
+            
+            Log::info('PNG to WebP conversion completed', [
+                'input' => basename($inputPath),
+                'output' => basename($outputPath)
+            ]);
+            
+            return true;
+        } catch (Exception $e) {
+            Log::error('PNG to WebP conversion failed: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**

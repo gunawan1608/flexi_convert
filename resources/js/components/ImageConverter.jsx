@@ -7,114 +7,83 @@ const ImageConverter = () => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [results, setResults] = useState([]);
     const [toolSettings, setToolSettings] = useState({});
-    const [activeCategory, setActiveCategory] = useState('conversion');
+    const [customSettings, setCustomSettings] = useState({
+        width: 800,
+        height: 600,
+        angle: 90,
+        maintainAspectRatio: true
+    });
+    const [activeCategory, setActiveCategory] = useState('image-conversion');
+    const [processingStatus, setProcessingStatus] = useState('');
+    const [downloadUrl, setDownloadUrl] = useState(null);
+    const [outputFilename, setOutputFilename] = useState(null);
+    const [errorMessage, setErrorMessage] = useState(null);
 
-    // Enhanced tool categories with better organization and animations
+    // Tool categories with format conversion and image tools
     const toolCategories = [
         {
-            id: 'conversion',
-            title: 'Format Conversion',
-            icon: '🔄',
-            gradient: 'from-green-400 via-green-500 to-green-600',
+            id: 'image-conversion',
+            title: 'Image Format Conversion',
+            icon: '🖼️',
+            gradient: 'from-blue-400 via-blue-500 to-blue-600',
             description: 'Convert between different image formats',
             tools: [
                 { 
-                    id: 'jpg-to-png', 
-                    name: 'JPG → PNG', 
-                    description: 'Convert JPG to PNG with transparency support', 
-                    icon: '🖼️',
-                    color: 'from-blue-500 to-blue-600',
-                    formats: ['.jpg', '.jpeg']
-                },
-                { 
-                    id: 'png-to-jpg', 
+                    id: 'png-to-jpg',
                     name: 'PNG → JPG', 
-                    description: 'Convert PNG to JPG format', 
-                    icon: '📸',
-                    color: 'from-green-500 to-green-600',
+                    description: 'Convert PNG images to JPG format', 
+                    icon: '🔄',
+                    color: 'from-blue-500 to-blue-600',
                     formats: ['.png']
                 },
                 { 
-                    id: 'webp-to-jpg', 
-                    name: 'WebP → JPG', 
-                    description: 'Convert modern WebP to universal JPG', 
-                    icon: '🌐',
-                    color: 'from-orange-500 to-orange-600',
+                    id: 'jpg-to-png', 
+                    name: 'JPG → PNG', 
+                    description: 'Convert JPG images to PNG format', 
+                    icon: '🔄',
+                    color: 'from-green-500 to-green-600',
+                    formats: ['.jpg', '.jpeg']
+                },
+                { 
+                    id: 'webp-to-png', 
+                    name: 'WebP → PNG', 
+                    description: 'Convert WebP images to PNG format', 
+                    icon: '🔄',
+                    color: 'from-purple-500 to-purple-600',
                     formats: ['.webp']
                 },
                 { 
-                    id: 'gif-to-png', 
-                    name: 'GIF → PNG', 
-                    description: 'Convert animated GIF to static PNG', 
-                    icon: '🎭',
-                    color: 'from-purple-500 to-purple-600',
-                    formats: ['.gif']
-                },
-                { 
-                    id: 'bmp-to-jpg', 
-                    name: 'BMP → JPG', 
-                    description: 'Convert BMP to compressed JPG', 
-                    icon: '🎨',
-                    color: 'from-cyan-500 to-cyan-600',
-                    formats: ['.bmp']
+                    id: 'png-to-webp', 
+                    name: 'PNG → WebP', 
+                    description: 'Convert PNG images to WebP format', 
+                    icon: '🔄',
+                    color: 'from-orange-500 to-orange-600',
+                    formats: ['.png']
                 }
             ]
         },
         {
-            id: 'compression',
-            title: 'Image Compression',
-            icon: '🗜️',
-            gradient: 'from-rose-400 via-rose-500 to-rose-600',
-            description: 'Optimize image file sizes',
-            tools: [
-                { 
-                    id: 'compress-image', 
-                    name: 'Compress Image', 
-                    description: 'Reduce file size while maintaining quality', 
-                    icon: '📦',
-                    color: 'from-red-500 to-red-600',
-                    formats: ['.jpg', '.jpeg', '.png', '.webp']
-                },
-                { 
-                    id: 'optimize-web', 
-                    name: 'Optimize for Web', 
-                    description: 'Optimize images for web performance', 
-                    icon: '⚡',
-                    color: 'from-yellow-500 to-yellow-600',
-                    formats: ['.jpg', '.jpeg', '.png']
-                }
-            ]
-        },
-        {
-            id: 'enhancement',
-            title: 'Image Enhancement',
-            icon: '✨',
+            id: 'image-tools',
+            title: 'Image Tools',
+            icon: '🛠️',
             gradient: 'from-indigo-400 via-indigo-500 to-indigo-600',
-            description: 'Improve and enhance image quality',
+            description: 'Advanced image manipulation tools',
             tools: [
                 { 
                     id: 'resize-image', 
                     name: 'Resize Image', 
-                    description: 'Change image dimensions and resolution', 
+                    description: 'Resize images to custom dimensions', 
                     icon: '📏',
                     color: 'from-teal-500 to-teal-600',
                     formats: ['.jpg', '.jpeg', '.png', '.webp']
-                },
-                { 
-                    id: 'crop-image', 
-                    name: 'Crop Image', 
-                    description: 'Crop and trim images to desired size', 
-                    icon: '✂️',
-                    color: 'from-pink-500 to-pink-600',
-                    formats: ['.jpg', '.jpeg', '.png']
                 },
                 { 
                     id: 'rotate-image', 
                     name: 'Rotate Image', 
                     description: 'Rotate images to correct orientation', 
                     icon: '🔄',
-                    color: 'from-indigo-500 to-indigo-600',
-                    formats: ['.jpg', '.jpeg', '.png']
+                    color: 'from-pink-500 to-pink-600',
+                    formats: ['.jpg', '.jpeg', '.png', '.webp']
                 }
             ]
         }
@@ -130,23 +99,32 @@ const ImageConverter = () => {
                 .flatMap(cat => cat.tools)
                 .find(t => t.id === selectedTool.id);
             
-            return tool?.formats.includes(fileExtension) && file.size <= 50 * 1024 * 1024; // 50MB limit for images
+            return tool?.formats.includes(fileExtension) && file.size <= 50 * 1024 * 1024; // 50MB limit
         });
         
         setSelectedFiles(prev => [...prev, ...validFiles]);
     }, [selectedTool]);
 
+    // Get file accept types based on selected tool
+    const getAcceptTypes = () => {
+        if (!selectedTool) return {};
+        
+        const toolAcceptMap = {
+            'png-to-jpg': { 'image/png': ['.png'] },
+            'jpg-to-png': { 'image/jpeg': ['.jpg', '.jpeg'] },
+            'webp-to-png': { 'image/webp': ['.webp'] },
+            'png-to-webp': { 'image/png': ['.png'] },
+            'resize-image': { 'image/*': ['.jpg', '.jpeg', '.png', '.webp'] },
+            'rotate-image': { 'image/*': ['.jpg', '.jpeg', '.png', '.webp'] }
+        };
+        
+        return toolAcceptMap[selectedTool.id] || {};
+    };
+
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
-        accept: selectedTool ? {
-            'image/jpeg': ['.jpg', '.jpeg'],
-            'image/png': ['.png'],
-            'image/webp': ['.webp'],
-            'image/gif': ['.gif'],
-            'image/bmp': ['.bmp'],
-            'image/tiff': ['.tiff', '.tif']
-        } : {},
-        multiple: true,
+        accept: getAcceptTypes(),
+        multiple: false,
         maxSize: 50 * 1024 * 1024,
         disabled: !selectedTool
     });
@@ -168,12 +146,19 @@ const ImageConverter = () => {
         setSelectedFiles([]);
         setResults([]);
         setToolSettings({});
+        setProcessingStatus('');
+        setDownloadUrl(null);
+        setOutputFilename(null);
+        setErrorMessage(null);
     };
 
     const processFiles = async () => {
         if (!selectedTool || selectedFiles.length === 0) return;
 
         setIsProcessing(true);
+        setProcessingStatus('Uploading files...');
+        setErrorMessage(null);
+        setDownloadUrl(null);
         
         try {
             const formData = new FormData();
@@ -181,8 +166,17 @@ const ImageConverter = () => {
                 formData.append('files[]', file);
             });
             formData.append('tool', selectedTool.id);
-            formData.append('settings', JSON.stringify(toolSettings));
-            formData.append('_token', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'));
+            
+            // Add custom settings for resize and rotate tools
+            if (selectedTool.id === 'resize-image') {
+                formData.append('settings[width]', customSettings.width);
+                formData.append('settings[height]', customSettings.height);
+                formData.append('settings[maintainAspectRatio]', customSettings.maintainAspectRatio);
+            } else if (selectedTool.id === 'rotate-image') {
+                formData.append('settings[angle]', customSettings.angle);
+            }
+
+            setProcessingStatus('Processing conversion...');
 
             const response = await fetch('/api/image-tools/process', {
                 method: 'POST',
@@ -191,17 +185,39 @@ const ImageConverter = () => {
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
                 }
             });
-
+            
             const result = await response.json();
             
             if (result.success) {
-                setResults(result.results || []);
+                setProcessingStatus('Conversion completed!');
+                
+                // Handle multiple files results or single file result
+                if (result.results && Array.isArray(result.results) && result.results.length > 0) {
+                    // Multiple files processing
+                    const firstResult = result.results[0];
+                    if (firstResult.status === 'completed') {
+                        setDownloadUrl(firstResult.download_url);
+                        setOutputFilename(firstResult.output_filename);
+                        setResults(result.results);
+                    }
+                } else {
+                    // Single file processing (fallback)
+                    setDownloadUrl(result.download_url || `/storage/${result.output_path}`);
+                    setOutputFilename(result.output_filename);
+                    setResults([{
+                        filename: result.output_filename,
+                        status: 'completed',
+                        download_url: result.download_url || `/storage/${result.output_path}`,
+                        processing_id: result.processing_id
+                    }]);
+                }
             } else {
-                alert('Processing failed: ' + (result.message || 'Unknown error'));
+                throw new Error(result.message || 'Conversion failed');
             }
         } catch (error) {
             console.error('Processing error:', error);
-            alert('An error occurred during processing. Please try again.');
+            setErrorMessage(error.message || 'An error occurred during processing');
+            setProcessingStatus('Conversion failed');
         } finally {
             setIsProcessing(false);
         }
@@ -209,18 +225,14 @@ const ImageConverter = () => {
 
     const getActionText = (toolId) => {
         const actionMap = {
-            'jpg-to-png': 'Convert to PNG',
-            'png-to-jpg': 'Convert to JPG',
-            'webp-to-jpg': 'Convert to JPG',
-            'gif-to-png': 'Convert to PNG',
-            'bmp-to-jpg': 'Convert to JPG',
-            'compress-image': 'Compress Image',
-            'optimize-web': 'Optimize for Web',
-            'resize-image': 'Resize Image',
-            'crop-image': 'Crop Image',
-            'rotate-image': 'Rotate Image'
+            'png-to-jpg': 'Konversi ke JPG',
+            'jpg-to-png': 'Konversi ke PNG',
+            'webp-to-png': 'Konversi ke PNG',
+            'png-to-webp': 'Konversi ke WebP',
+            'resize-image': 'Resize Gambar',
+            'rotate-image': 'Putar Gambar'
         };
-        return actionMap[toolId] || 'Process Image';
+        return actionMap[toolId] || 'Proses Gambar';
     };
 
     const handleDownload = async (downloadUrl, filename) => {
@@ -270,15 +282,15 @@ const ImageConverter = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-blue-50">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
             <div className="container mx-auto px-4 py-8 space-y-8">
-                {/* Enhanced Header */}
+                {/* Header */}
                 <div className="text-center space-y-6">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-500 to-blue-600 rounded-3xl shadow-lg transform rotate-3 hover:rotate-0 transition-transform duration-300">
+                    <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl shadow-lg transform rotate-3 hover:rotate-0 transition-transform duration-300">
                         <span className="text-3xl">🖼️</span>
                     </div>
                     <div>
-                        <h1 className="text-4xl lg:text-6xl font-bold bg-gradient-to-r from-gray-900 via-green-900 to-blue-900 bg-clip-text text-transparent mb-4">
+                        <h1 className="text-4xl lg:text-6xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-indigo-900 bg-clip-text text-transparent mb-4">
                             Image Converter
                         </h1>
                         <p className="text-xl text-gray-600 max-w-2xl mx-auto">
@@ -290,15 +302,15 @@ const ImageConverter = () => {
                     {/* Stats */}
                     <div className="flex justify-center space-x-8 text-center">
                         <div className="bg-white/70 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg">
-                            <div className="text-2xl font-bold text-green-600">{selectedFiles.length}</div>
+                            <div className="text-2xl font-bold text-blue-600">{selectedFiles.length}</div>
                             <div className="text-sm text-gray-600">Files Selected</div>
                         </div>
                         <div className="bg-white/70 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg">
-                            <div className="text-2xl font-bold text-blue-600">{results.filter(r => r.status === 'completed').length}</div>
+                            <div className="text-2xl font-bold text-green-600">{results.filter(r => r.status === 'completed').length}</div>
                             <div className="text-sm text-gray-600">Completed</div>
                         </div>
                         <div className="bg-white/70 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg">
-                            <div className="text-2xl font-bold text-indigo-600">∞</div>
+                            <div className="text-2xl font-bold text-purple-600">∞</div>
                             <div className="text-sm text-gray-600">Free Usage</div>
                         </div>
                     </div>
@@ -347,7 +359,7 @@ const ImageConverter = () => {
                                     >
                                         <div className={`relative overflow-hidden rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 ${
                                             selectedTool?.id === tool.id 
-                                                ? `bg-gradient-to-br ${tool.color} text-white ring-4 ring-green-300` 
+                                                ? `bg-gradient-to-br ${tool.color} text-white ring-4 ring-blue-300` 
                                                 : 'bg-white hover:bg-gray-50'
                                         }`}>
                                             {/* Background Pattern */}
@@ -361,9 +373,7 @@ const ImageConverter = () => {
                                                         ? 'bg-white/20' 
                                                         : `bg-gradient-to-br ${tool.color}`
                                                 } shadow-lg`}>
-                                                    <span className={`text-2xl ${
-                                                        selectedTool?.id === tool.id ? 'text-white' : 'text-white'
-                                                    }`}>
+                                                    <span className="text-2xl text-white">
                                                         {tool.icon}
                                                     </span>
                                                 </div>
@@ -421,15 +431,15 @@ const ImageConverter = () => {
                                 {...getRootProps()}
                                 className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-all duration-300 cursor-pointer ${
                                     isDragActive 
-                                        ? 'border-green-400 bg-green-50/50 scale-105' 
-                                        : 'border-gray-300 hover:border-green-400 hover:bg-green-50/30'
+                                        ? 'border-blue-400 bg-blue-50/50 scale-105'
+                                        : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50/30'
                                 }`}
                             >
                                 <input {...getInputProps()} />
                                 <div className="space-y-6">
                                     <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center transition-all duration-300 ${
                                         isDragActive 
-                                            ? 'bg-gradient-to-br from-green-400 to-green-600 scale-110' 
+                                            ? 'bg-gradient-to-br from-blue-400 to-blue-600 scale-110' 
                                             : 'bg-gradient-to-br from-gray-100 to-gray-200'
                                     }`}>
                                         <svg className={`w-12 h-12 transition-colors duration-300 ${
@@ -440,15 +450,16 @@ const ImageConverter = () => {
                                     </div>
                                     <div>
                                         <p className="text-2xl font-bold text-gray-900 mb-2">
-                                            {isDragActive ? 'Drop files here!' : 'Drag & drop your image files'}
+                                            {isDragActive ? 'Drop files here!' : 'Drag & drop your files'}
                                         </p>
                                         <p className="text-gray-600">
-                                            or <span className="text-green-600 font-semibold">click to browse</span>
+                                            or <span className="text-blue-600 font-semibold">click to browse</span>
                                         </p>
                                     </div>
                                     <div className="text-sm text-gray-500 space-y-1">
                                         <p>Supported formats: {selectedTool.formats.join(', ')}</p>
                                         <p>Maximum file size: 50MB per file</p>
+                                        <p className="text-orange-600 font-medium">Single file only</p>
                                     </div>
                                 </div>
                             </div>
@@ -467,13 +478,14 @@ const ImageConverter = () => {
                                                         </span>
                                                     </div>
                                                     <div>
-                                                        <p className="font-medium text-gray-900 truncate max-w-48">{file.name}</p>
+                                                        <p className="font-medium text-gray-900 truncate max-w-48" title={file.name}>{file.name}</p>
                                                         <p className="text-sm text-gray-500">{formatFileSize(file.size)}</p>
                                                     </div>
                                                 </div>
                                                 <button
                                                     onClick={() => removeFile(index)}
-                                                    className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors duration-200"
+                                                    disabled={isProcessing}
+                                                    className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
                                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -481,6 +493,144 @@ const ImageConverter = () => {
                                                 </button>
                                             </div>
                                         ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Custom Settings for Resize and Rotate */}
+                            {selectedTool && (selectedTool.id === 'resize-image' || selectedTool.id === 'rotate-image') && (
+                                <div className="space-y-4 p-6 bg-gray-50 rounded-xl border border-gray-200">
+                                    <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
+                                        <span className="text-lg">{selectedTool.id === 'resize-image' ? '📏' : '🔄'}</span>
+                                        <span>{selectedTool.id === 'resize-image' ? 'Resize Settings' : 'Rotate Settings'}</span>
+                                    </h4>
+                                    
+                                    {selectedTool.id === 'resize-image' && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Width (px)</label>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max="5000"
+                                                    value={customSettings.width}
+                                                    onChange={(e) => setCustomSettings(prev => ({...prev, width: parseInt(e.target.value) || 800}))}
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                    placeholder="800"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Height (px)</label>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max="5000"
+                                                    value={customSettings.height}
+                                                    onChange={(e) => setCustomSettings(prev => ({...prev, height: parseInt(e.target.value) || 600}))}
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                    placeholder="600"
+                                                />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="flex items-center space-x-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={customSettings.maintainAspectRatio}
+                                                        onChange={(e) => setCustomSettings(prev => ({...prev, maintainAspectRatio: e.target.checked}))}
+                                                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                                    />
+                                                    <span className="text-sm text-gray-700">Maintain aspect ratio</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {selectedTool.id === 'rotate-image' && (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Rotation Angle (degrees)</label>
+                                                <input
+                                                    type="number"
+                                                    min="-360"
+                                                    max="360"
+                                                    step="1"
+                                                    value={customSettings.angle}
+                                                    onChange={(e) => setCustomSettings(prev => ({...prev, angle: parseInt(e.target.value) || 90}))}
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                    placeholder="90"
+                                                />
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <span className="text-sm font-medium text-gray-700 w-full mb-1">Quick Presets:</span>
+                                                {[90, 180, 270, -90].map(angle => (
+                                                    <button
+                                                        key={angle}
+                                                        onClick={() => setCustomSettings(prev => ({...prev, angle}))}
+                                                        className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                                                            customSettings.angle === angle
+                                                                ? 'bg-blue-500 text-white'
+                                                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        {angle > 0 ? `+${angle}°` : `${angle}°`}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Processing Status */}
+                            {processingStatus && (
+                                <div className={`p-4 rounded-xl border ${isProcessing ? 'bg-blue-50 border-blue-200' : errorMessage ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                                    <div className="flex items-center space-x-3">
+                                        {isProcessing && (
+                                            <svg className="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                        )}
+                                        {!isProcessing && !errorMessage && (
+                                            <svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                            </svg>
+                                        )}
+                                        {errorMessage && (
+                                            <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                        )}
+                                        <span className={`font-medium ${isProcessing ? 'text-blue-800' : errorMessage ? 'text-red-800' : 'text-green-800'}`}>
+                                            {errorMessage || processingStatus}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Download Button */}
+                            {downloadUrl && outputFilename && !isProcessing && (
+                                <div className="bg-green-50 border border-green-200 rounded-xl p-6">
+                                    <div className="text-center space-y-4">
+                                        <div className="flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mx-auto">
+                                            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-lg font-semibold text-green-800 mb-2">File Ready for Download!</h4>
+                                            <p className="text-green-700 mb-4">Your converted file: <span className="font-medium">{outputFilename}</span></p>
+                                            <a
+                                                href={downloadUrl}
+                                                download={outputFilename}
+                                                className={`inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r ${selectedTool.color} text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-200 transform hover:scale-105`}
+                                            >
+                                                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                                </svg>
+                                                Download File
+                                            </a>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -518,49 +668,15 @@ const ImageConverter = () => {
                                     onClick={() => {
                                         setSelectedFiles([]);
                                         setResults([]);
+                                        setErrorMessage(null);
+                                        setProcessingStatus('');
+                                        setDownloadUrl(null);
+                                        setOutputFilename(null);
                                     }}
                                     className="px-8 py-4 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
                                 >
                                     Clear All
                                 </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Results Section */}
-                {results.length > 0 && (
-                    <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/20">
-                        <div className="p-8 space-y-6">
-                            <h3 className="text-2xl font-bold text-gray-900">Conversion Results</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {results.map((result, index) => (
-                                    <div key={index} className="border border-gray-200 rounded-xl p-6 bg-white shadow-sm hover:shadow-md transition-shadow duration-200">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <span className="font-medium text-gray-900 truncate">{result.filename}</span>
-                                            <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-                                                result.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                                result.status === 'failed' ? 'bg-red-100 text-red-800' :
-                                                'bg-blue-100 text-blue-800'
-                                            }`}>
-                                                {result.status === 'completed' ? 'Complete' :
-                                                 result.status === 'failed' ? 'Failed' :
-                                                 'Processing...'}
-                                            </span>
-                                        </div>
-                                        {result.status === 'completed' && result.download_url && (
-                                            <button
-                                                onClick={() => handleDownload(result.download_url, result.filename)}
-                                                className={`w-full inline-flex items-center justify-center px-4 py-3 bg-gradient-to-r ${selectedTool.color} text-white font-medium rounded-lg hover:shadow-lg transition-all duration-200 transform hover:scale-105`}
-                                            >
-                                                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                                </svg>
-                                                Download File
-                                            </button>
-                                        )}
-                                    </div>
-                                ))}
                             </div>
                         </div>
                     </div>

@@ -14,7 +14,7 @@ class UserController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth');
+        // Middleware is now handled in routes or via Route::middleware()
     }
 
     public function getProfile()

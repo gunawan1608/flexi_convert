@@ -6,10 +6,15 @@ const AudioConverter = () => {
     const [selectedFiles, setSelectedFiles] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [results, setResults] = useState([]);
-    const [toolSettings, setToolSettings] = useState({});
+    const [toolSettings, setToolSettings] = useState({
+        quality: 'medium',
+        bitrate: '192',
+        sampleRate: '44100',
+        channels: 'stereo'
+    });
     const [activeCategory, setActiveCategory] = useState('conversion');
 
-    // Enhanced tool categories with better organization and animations
+    // Simplified tool categories - only Format Conversion and Audio Enhancement
     const toolCategories = [
         {
             id: 'conversion',
@@ -48,57 +53,56 @@ const AudioConverter = () => {
                     description: 'Convert AAC files to MP3', 
                     icon: '🎧',
                     color: 'from-purple-500 to-purple-600',
-                    formats: ['.aac']
+                    formats: ['.aac', '.m4a']
                 },
                 { 
                     id: 'ogg-to-mp3', 
                     name: 'OGG → MP3', 
-                    description: 'Convert OGG Vorbis to MP3', 
+                    description: 'Convert OGG files to MP3', 
                     icon: '🔊',
-                    color: 'from-cyan-500 to-cyan-600',
+                    color: 'from-teal-500 to-teal-600',
                     formats: ['.ogg']
-                }
-            ]
-        },
-        {
-            id: 'compression',
-            title: 'Audio Compression',
-            icon: '🗜️',
-            gradient: 'from-rose-400 via-rose-500 to-rose-600',
-            description: 'Optimize audio file sizes',
-            tools: [
-                { 
-                    id: 'compress-audio', 
-                    name: 'Compress Audio', 
-                    description: 'Reduce file size while maintaining quality', 
-                    icon: '📦',
-                    color: 'from-red-500 to-red-600',
-                    formats: ['.mp3', '.wav', '.flac', '.aac']
                 },
                 { 
-                    id: 'bitrate-converter', 
-                    name: 'Bitrate Converter', 
-                    description: 'Change audio bitrate for size optimization', 
-                    icon: '⚡',
-                    color: 'from-yellow-500 to-yellow-600',
-                    formats: ['.mp3', '.aac']
+                    id: 'mp3-to-flac', 
+                    name: 'MP3 → FLAC', 
+                    description: 'Convert MP3 to lossless FLAC', 
+                    icon: '💿',
+                    color: 'from-indigo-500 to-indigo-600',
+                    formats: ['.mp3']
+                },
+                { 
+                    id: 'mp3-to-aac', 
+                    name: 'MP3 → AAC', 
+                    description: 'Convert MP3 to AAC format', 
+                    icon: '🎯',
+                    color: 'from-red-500 to-red-600',
+                    formats: ['.mp3']
+                },
+                { 
+                    id: 'wav-to-flac', 
+                    name: 'WAV → FLAC', 
+                    description: 'Convert WAV to lossless FLAC', 
+                    icon: '💽',
+                    color: 'from-emerald-500 to-emerald-600',
+                    formats: ['.wav']
                 }
             ]
         },
         {
             id: 'enhancement',
             title: 'Audio Enhancement',
-            icon: '✨',
-            gradient: 'from-indigo-400 via-indigo-500 to-indigo-600',
-            description: 'Improve and enhance audio quality',
+            icon: '🎚️',
+            gradient: 'from-blue-400 via-blue-500 to-blue-600',
+            description: 'Enhance and optimize audio quality',
             tools: [
                 { 
-                    id: 'normalize-audio', 
-                    name: 'Normalize Audio', 
-                    description: 'Balance audio levels for consistent volume', 
-                    icon: '📊',
-                    color: 'from-teal-500 to-teal-600',
-                    formats: ['.mp3', '.wav', '.flac']
+                    id: 'compress-audio', 
+                    name: 'Compress Audio', 
+                    description: 'Reduce audio file size while maintaining quality', 
+                    icon: '🗜️',
+                    color: 'from-cyan-500 to-cyan-600',
+                    formats: ['.mp3', '.wav', '.flac', '.aac', '.m4a', '.ogg']
                 },
                 { 
                     id: 'noise-reduction', 
@@ -106,15 +110,7 @@ const AudioConverter = () => {
                     description: 'Remove background noise and improve clarity', 
                     icon: '🔇',
                     color: 'from-pink-500 to-pink-600',
-                    formats: ['.mp3', '.wav']
-                },
-                { 
-                    id: 'audio-trim', 
-                    name: 'Trim Audio', 
-                    description: 'Cut and trim audio files to desired length', 
-                    icon: '✂️',
-                    color: 'from-indigo-500 to-indigo-600',
-                    formats: ['.mp3', '.wav', '.flac']
+                    formats: ['.mp3', '.wav', '.flac', '.aac', '.m4a', '.ogg']
                 }
             ]
         }
@@ -122,19 +118,43 @@ const AudioConverter = () => {
 
     // File upload handling with enhanced validation
     const onDrop = useCallback((acceptedFiles) => {
-        const validFiles = acceptedFiles.filter(file => {
-            if (!selectedTool) return false;
+        const validFiles = [];
+        const rejectedFiles = [];
+        
+        acceptedFiles.forEach(file => {
+            if (!selectedTool) {
+                rejectedFiles.push({ file, reason: 'Pilih tool terlebih dahulu' });
+                return;
+            }
             
             const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
             const tool = toolCategories
                 .flatMap(cat => cat.tools)
                 .find(t => t.id === selectedTool.id);
             
-            return tool?.formats.includes(fileExtension) && file.size <= 100 * 1024 * 1024; // 100MB limit
+            if (!tool?.formats.includes(fileExtension)) {
+                rejectedFiles.push({ 
+                    file, 
+                    reason: `Format ${fileExtension} tidak didukung untuk ${selectedTool.name}. Format yang didukung: ${tool?.formats.join(', ')}` 
+                });
+                return;
+            }
+            
+            if (file.size > 100 * 1024 * 1024) {
+                rejectedFiles.push({ file, reason: 'File terlalu besar (maksimal 100MB)' });
+                return;
+            }
+            
+            validFiles.push(file);
         });
         
+        if (rejectedFiles.length > 0) {
+            const errorMessages = rejectedFiles.map(r => `${r.file.name}: ${r.reason}`).join('\n');
+            alert('Beberapa file tidak dapat diupload:\n\n' + errorMessages);
+        }
+        
         setSelectedFiles(prev => [...prev, ...validFiles]);
-    }, [selectedTool]);
+    }, [selectedTool, toolCategories]);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
@@ -181,7 +201,12 @@ const AudioConverter = () => {
                 formData.append('files[]', file);
             });
             formData.append('tool', selectedTool.id);
-            formData.append('settings', JSON.stringify(toolSettings));
+            
+            // Send settings as individual form fields instead of JSON string
+            Object.keys(toolSettings).forEach(key => {
+                formData.append(`settings[${key}]`, toolSettings[key]);
+            });
+            
             formData.append('_token', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'));
 
             const response = await fetch('/api/audio-tools/process', {
@@ -214,11 +239,11 @@ const AudioConverter = () => {
             'flac-to-mp3': 'Convert to MP3',
             'aac-to-mp3': 'Convert to MP3',
             'ogg-to-mp3': 'Convert to MP3',
+            'mp3-to-flac': 'Convert to FLAC',
+            'mp3-to-aac': 'Convert to AAC',
+            'wav-to-flac': 'Convert to FLAC',
             'compress-audio': 'Compress Audio',
-            'bitrate-converter': 'Convert Bitrate',
-            'normalize-audio': 'Normalize Audio',
-            'noise-reduction': 'Reduce Noise',
-            'audio-trim': 'Trim Audio'
+            'noise-reduction': 'Reduce Noise'
         };
         return actionMap[toolId] || 'Process Audio';
     };

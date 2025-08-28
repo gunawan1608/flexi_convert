@@ -5,14 +5,16 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use App\Models\PdfProcessing;
+use App\Models\ImageProcessing;
 use Carbon\Carbon;
 
 class ConversionController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth');
+        // Middleware is now handled in routes or via Route::middleware()
     }
 
     public function getHistory(Request $request)

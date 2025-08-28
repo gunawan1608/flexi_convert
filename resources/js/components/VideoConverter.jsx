@@ -6,10 +6,16 @@ const VideoConverter = () => {
     const [selectedFiles, setSelectedFiles] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [results, setResults] = useState([]);
-    const [toolSettings, setToolSettings] = useState({});
+    const [settings, setSettings] = useState({
+        quality: 'medium',
+        format: 'auto',
+        bitrate: '2000',
+        resolution: 'original',
+        frameRate: 'original'
+    });
     const [activeCategory, setActiveCategory] = useState('conversion');
 
-    // Enhanced tool categories with better organization and animations
+    // Simplified tool categories - only Format Conversion and Video Optimization
     const toolCategories = [
         {
             id: 'conversion',
@@ -51,70 +57,69 @@ const VideoConverter = () => {
                     formats: ['.mov']
                 },
                 { 
+                    id: 'mp4-to-webm', 
+                    name: 'MP4 → WebM', 
+                    description: 'Convert MP4 to WebM format', 
+                    icon: '🌐',
+                    color: 'from-teal-500 to-teal-600',
+                    formats: ['.mp4']
+                },
+                { 
                     id: 'webm-to-mp4', 
                     name: 'WebM → MP4', 
                     description: 'Convert WebM to MP4 format', 
-                    icon: '🌐',
-                    color: 'from-cyan-500 to-cyan-600',
+                    icon: '📱',
+                    color: 'from-indigo-500 to-indigo-600',
                     formats: ['.webm']
+                },
+                { 
+                    id: 'video-to-gif', 
+                    name: 'Video → GIF', 
+                    description: 'Convert video to animated GIF', 
+                    icon: '🎭',
+                    color: 'from-pink-500 to-pink-600',
+                    formats: ['.mp4', '.avi', '.mkv', '.mov', '.webm']
                 }
             ]
         },
         {
-            id: 'compression',
-            title: 'Video Compression',
-            icon: '🗜️',
-            gradient: 'from-rose-400 via-rose-500 to-rose-600',
-            description: 'Optimize video file sizes',
+            id: 'optimization',
+            title: 'Video Optimization',
+            icon: '⚡',
+            gradient: 'from-blue-400 via-blue-500 to-blue-600',
+            description: 'Optimize video quality and file size',
             tools: [
                 { 
                     id: 'compress-video', 
                     name: 'Compress Video', 
-                    description: 'Reduce file size while maintaining quality', 
-                    icon: '📦',
-                    color: 'from-red-500 to-red-600',
-                    formats: ['.mp4', '.avi', '.mkv', '.mov']
+                    description: 'Reduce video file size while maintaining quality', 
+                    icon: '🗜️',
+                    color: 'from-cyan-500 to-cyan-600',
+                    formats: ['.mp4', '.avi', '.mkv', '.mov', '.webm']
                 },
                 { 
-                    id: 'optimize-web', 
-                    name: 'Optimize for Web', 
-                    description: 'Optimize videos for web streaming', 
-                    icon: '⚡',
-                    color: 'from-yellow-500 to-yellow-600',
-                    formats: ['.mp4', '.webm']
-                }
-            ]
-        },
-        {
-            id: 'editing',
-            title: 'Video Editing',
-            icon: '✂️',
-            gradient: 'from-indigo-400 via-indigo-500 to-indigo-600',
-            description: 'Edit and enhance your videos',
-            tools: [
-                { 
-                    id: 'trim-video', 
-                    name: 'Trim Video', 
-                    description: 'Cut and trim videos to desired length', 
-                    icon: '✂️',
-                    color: 'from-teal-500 to-teal-600',
-                    formats: ['.mp4', '.avi', '.mkv']
+                    id: 'change-resolution', 
+                    name: 'Change Resolution', 
+                    description: 'Resize video to different resolutions', 
+                    icon: '📐',
+                    color: 'from-emerald-500 to-emerald-600',
+                    formats: ['.mp4', '.avi', '.mkv', '.mov', '.webm']
                 },
                 { 
-                    id: 'resize-video', 
-                    name: 'Resize Video', 
-                    description: 'Change video resolution and dimensions', 
-                    icon: '📏',
-                    color: 'from-pink-500 to-pink-600',
-                    formats: ['.mp4', '.avi']
+                    id: 'change-bitrate', 
+                    name: 'Change Bitrate', 
+                    description: 'Adjust video bitrate for quality/size balance', 
+                    icon: '📊',
+                    color: 'from-violet-500 to-violet-600',
+                    formats: ['.mp4', '.avi', '.mkv', '.mov', '.webm']
                 },
                 { 
-                    id: 'extract-audio', 
-                    name: 'Extract Audio', 
-                    description: 'Extract audio track from video files', 
-                    icon: '🎵',
-                    color: 'from-indigo-500 to-indigo-600',
-                    formats: ['.mp4', '.avi', '.mkv', '.mov']
+                    id: 'change-fps', 
+                    name: 'Change Frame Rate', 
+                    description: 'Modify video frame rate (FPS)', 
+                    icon: '🎯',
+                    color: 'from-orange-500 to-orange-600',
+                    formats: ['.mp4', '.avi', '.mkv', '.mov', '.webm']
                 }
             ]
         }
@@ -122,19 +127,43 @@ const VideoConverter = () => {
 
     // File upload handling with enhanced validation
     const onDrop = useCallback((acceptedFiles) => {
-        const validFiles = acceptedFiles.filter(file => {
-            if (!selectedTool) return false;
+        const validFiles = [];
+        const rejectedFiles = [];
+        
+        acceptedFiles.forEach(file => {
+            if (!selectedTool) {
+                rejectedFiles.push({ file, reason: 'Pilih tool terlebih dahulu' });
+                return;
+            }
             
             const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
             const tool = toolCategories
                 .flatMap(cat => cat.tools)
                 .find(t => t.id === selectedTool.id);
             
-            return tool?.formats.includes(fileExtension) && file.size <= 500 * 1024 * 1024; // 500MB limit for videos
+            if (!tool?.formats.includes(fileExtension)) {
+                rejectedFiles.push({ 
+                    file, 
+                    reason: `Format ${fileExtension} tidak didukung untuk ${selectedTool.name}. Format yang didukung: ${tool?.formats.join(', ')}` 
+                });
+                return;
+            }
+            
+            if (file.size > 500 * 1024 * 1024) {
+                rejectedFiles.push({ file, reason: 'File terlalu besar (maksimal 500MB)' });
+                return;
+            }
+            
+            validFiles.push(file);
         });
         
+        if (rejectedFiles.length > 0) {
+            const errorMessages = rejectedFiles.map(r => `${r.file.name}: ${r.reason}`).join('\n');
+            alert('Beberapa file tidak dapat diupload:\n\n' + errorMessages);
+        }
+        
         setSelectedFiles(prev => [...prev, ...validFiles]);
-    }, [selectedTool]);
+    }, [selectedTool, toolCategories]);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
@@ -181,7 +210,12 @@ const VideoConverter = () => {
                 formData.append('files[]', file);
             });
             formData.append('tool', selectedTool.id);
-            formData.append('settings', JSON.stringify(toolSettings));
+            
+            // Send settings as individual form fields instead of JSON string
+            Object.keys(toolSettings).forEach(key => {
+                formData.append(`settings[${key}]`, toolSettings[key]);
+            });
+            
             formData.append('_token', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'));
 
             const response = await fetch('/api/video-tools/process', {
@@ -213,12 +247,13 @@ const VideoConverter = () => {
             'avi-to-mp4': 'Convert to MP4',
             'mkv-to-mp4': 'Convert to MP4',
             'mov-to-mp4': 'Convert to MP4',
+            'mp4-to-webm': 'Convert to WebM',
             'webm-to-mp4': 'Convert to MP4',
+            'video-to-gif': 'Convert to GIF',
             'compress-video': 'Compress Video',
-            'optimize-web': 'Optimize for Web',
-            'trim-video': 'Trim Video',
-            'resize-video': 'Resize Video',
-            'extract-audio': 'Extract Audio'
+            'change-resolution': 'Change Resolution',
+            'change-bitrate': 'Change Bitrate',
+            'change-fps': 'Change Frame Rate'
         };
         return actionMap[toolId] || 'Process Video';
     };
@@ -481,6 +516,92 @@ const VideoConverter = () => {
                                                 </button>
                                             </div>
                                         ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Video Optimization Settings */}
+                            {selectedTool && (selectedTool.id === 'compress-video' || selectedTool.id === 'change-resolution' || selectedTool.id === 'change-bitrate' || selectedTool.id === 'change-fps') && (
+                                <div className="bg-gray-50/50 rounded-2xl p-6 space-y-4">
+                                    <h4 className="font-semibold text-gray-900 mb-4">Optimization Settings</h4>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {/* Bitrate Setting */}
+                                        {(selectedTool.id === 'compress-video' || selectedTool.id === 'change-bitrate') && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Bitrate (kbps)
+                                                </label>
+                                                <select
+                                                    value={settings.bitrate}
+                                                    onChange={(e) => setSettings(prev => ({ ...prev, bitrate: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                >
+                                                    <option value="500">500 kbps (Low)</option>
+                                                    <option value="1000">1 Mbps (Medium)</option>
+                                                    <option value="2000">2 Mbps (High)</option>
+                                                    <option value="4000">4 Mbps (Very High)</option>
+                                                    <option value="8000">8 Mbps (Ultra)</option>
+                                                </select>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Resolution Setting */}
+                                        {(selectedTool.id === 'compress-video' || selectedTool.id === 'change-resolution') && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Resolution
+                                                </label>
+                                                <select
+                                                    value={settings.resolution}
+                                                    onChange={(e) => setSettings(prev => ({ ...prev, resolution: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                >
+                                                    <option value="original">Keep Original</option>
+                                                    <option value="480p">480p (SD)</option>
+                                                    <option value="720p">720p (HD)</option>
+                                                    <option value="1080p">1080p (Full HD)</option>
+                                                    <option value="1440p">1440p (2K)</option>
+                                                    <option value="2160p">2160p (4K)</option>
+                                                </select>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Frame Rate Setting */}
+                                        {(selectedTool.id === 'compress-video' || selectedTool.id === 'change-fps') && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Frame Rate (fps)
+                                                </label>
+                                                <select
+                                                    value={settings.frameRate}
+                                                    onChange={(e) => setSettings(prev => ({ ...prev, frameRate: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                >
+                                                    <option value="original">Keep Original</option>
+                                                    <option value="24">24 fps (Cinema)</option>
+                                                    <option value="30">30 fps (Standard)</option>
+                                                    <option value="60">60 fps (Smooth)</option>
+                                                    <option value="120">120 fps (High Speed)</option>
+                                                </select>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
+                                        <div className="flex items-start space-x-2">
+                                            <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                            </svg>
+                                            <div>
+                                                <p className="font-medium text-blue-800 mb-1">Optimization Tips:</p>
+                                                <ul className="text-blue-700 space-y-1 text-xs">
+                                                    <li>• Lower bitrate = smaller file size but reduced quality</li>
+                                                    <li>• Lower resolution = faster processing and smaller files</li>
+                                                    <li>• Lower frame rate = smoother playback on slower devices</li>
+                                                </ul>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}

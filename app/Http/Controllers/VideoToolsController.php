@@ -5,131 +5,311 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use App\Models\VideoProcessing;
 use Illuminate\Support\Str;
+use JsonException;
+use Exception;
 
 class VideoToolsController extends Controller
 {
     public function process(Request $request)
     {
         try {
-            Log::info('Video processing request received', [
-                'tool' => $request->input('tool'),
-                'files_count' => count($request->file('files', [])),
-                'settings' => $request->input('settings')
+            // Force JSON response and disable any output buffering
+            $request->headers->set('Accept', 'application/json');
+            
+            // Clear any previous output that might contaminate JSON
+            if (ob_get_level()) {
+                ob_clean();
+            }
+            
+            // Enhanced validation with better error messages
+            $validated = $request->validate([
+                'tool' => 'required|string',
+                'files' => 'required|array|min:1',
+                'files.*' => 'required|file|max:512000', // 500MB max for videos
+                'settings' => 'nullable|array'
             ]);
 
-            $tool = $request->input('tool');
-            $settings = json_decode($request->input('settings', '{}'), true);
-            $files = $request->file('files', []);
-
-            if (empty($files)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No files provided'
-                ], 400);
+            $tool = $validated['tool'];
+            $files = $validated['files'];
+            
+            // Enhanced file validation for specific tools
+            $this->validateFileTypesForTool($tool, $files);
+            
+            $settings = $validated['settings'] ?? [];
+            
+            // Ensure settings is an array
+            if (!is_array($settings)) {
+                $settings = [];
             }
+            
+            Log::info('Settings received', [
+                'settings' => $settings,
+                'tool' => $tool
+            ]);
+
+            Log::info("Processing Video tool: {$tool}", [
+                'files_count' => count($files),
+                'settings' => $settings,
+                'user_id' => auth()->id() ?? 'guest',
+                'tool_mapping_debug' => "Tool '{$tool}' will be processed"
+            ]);
 
             $results = [];
             foreach ($files as $index => $file) {
-                if (!$file->isValid()) {
-                    $results[] = [
-                        'filename' => $file->getClientOriginalName(),
-                        'status' => 'failed',
-                        'message' => 'Invalid file'
-                    ];
-                    continue;
-                }
-
                 try {
                     $result = $this->processVideoFile($file, $tool, $settings);
                     $results[] = $result;
-                } catch (\Exception $e) {
-                    Log::error('Video processing failed for file', [
-                        'filename' => $file->getClientOriginalName(),
-                        'error' => $e->getMessage()
-                    ]);
-                    
+                } catch (\Exception $fileError) {
+                    Log::error("Failed to process file {$index}: " . $fileError->getMessage());
                     $results[] = [
+                        'id' => null,
                         'filename' => $file->getClientOriginalName(),
                         'status' => 'failed',
-                        'message' => $e->getMessage()
+                        'error' => $fileError->getMessage()
                     ];
                 }
             }
 
+            // Ensure clean JSON response
             return response()->json([
                 'success' => true,
+                'message' => 'Pemrosesan video selesai',
                 'results' => $results
-            ]);
+            ])->header('Content-Type', 'application/json');
 
-        } catch (\Exception $e) {
-            Log::error('Video processing error', ['error' => $e->getMessage()]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Clear any output buffer before sending JSON
+            if (ob_get_level()) {
+                ob_clean();
+            }
+            
+            Log::error("Video validation error", [
+                'errors' => $e->errors(),
+                'input' => $request->except(['files'])
+            ]);
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Processing failed: ' . $e->getMessage()
-            ], 500);
+                'message' => 'Validasi gagal',
+                'errors' => $e->errors()
+            ], 422)->header('Content-Type', 'application/json');
+            
+        } catch (\Exception $e) {
+            // Clear any output buffer before sending JSON
+            if (ob_get_level()) {
+                ob_clean();
+            }
+            
+            Log::error("Video processing critical error", [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage(),
+                'debug' => config('app.debug') ? [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ] : null
+            ], 500)->header('Content-Type', 'application/json');
         }
+    }
+
+    /**
+     * Validate file types for specific video conversion tools
+     */
+    private function validateFileTypesForTool($tool, $files)
+    {
+        $validationRules = [
+            // Format Conversion tools
+            'mp4-to-avi' => ['mp4'],
+            'avi-to-mp4' => ['avi'],
+            'mkv-to-mp4' => ['mkv'],
+            'mov-to-mp4' => ['mov'],
+            'mp4-to-webm' => ['mp4'],
+            'webm-to-mp4' => ['webm'],
+            'video-to-gif' => ['mp4', 'avi', 'mkv', 'mov', 'webm'],
+            
+            // Video Optimization tools
+            'compress-video' => ['mp4', 'avi', 'mkv', 'mov', 'webm'],
+            'change-resolution' => ['mp4', 'avi', 'mkv', 'mov', 'webm'],
+            'change-bitrate' => ['mp4', 'avi', 'mkv', 'mov', 'webm'],
+            'change-fps' => ['mp4', 'avi', 'mkv', 'mov', 'webm']
+        ];
+
+        if (!isset($validationRules[$tool])) {
+            return; // No validation rules for this tool
+        }
+
+        $allowedExtensions = $validationRules[$tool];
+        $allowedMimeTypes = $this->getValidMimeTypes($allowedExtensions);
+
+        foreach ($files as $file) {
+            $extension = strtolower($file->getClientOriginalExtension());
+            $mimeType = $file->getMimeType();
+
+            if (!in_array($extension, $allowedExtensions) || !in_array($mimeType, $allowedMimeTypes)) {
+                throw new Exception("File type not supported for this conversion. Expected: " . implode(', ', $allowedExtensions) . ". Got: {$extension} ({$mimeType})");
+            }
+        }
+    }
+
+    /**
+     * Get valid MIME types for file extensions
+     */
+    private function getValidMimeTypes($extensions)
+    {
+        $mimeMap = [
+            'mp4' => ['video/mp4', 'application/octet-stream'],
+            'avi' => ['video/x-msvideo', 'video/avi', 'application/octet-stream'],
+            'mkv' => ['video/x-matroska', 'application/octet-stream'],
+            'mov' => ['video/quicktime', 'application/octet-stream'],
+            'webm' => ['video/webm', 'application/octet-stream'],
+            'wmv' => ['video/x-ms-wmv', 'application/octet-stream'],
+            'flv' => ['video/x-flv', 'application/octet-stream']
+        ];
+
+        $validMimeTypes = [];
+        foreach ($extensions as $ext) {
+            if (isset($mimeMap[$ext])) {
+                $validMimeTypes = array_merge($validMimeTypes, $mimeMap[$ext]);
+            }
+        }
+
+        return array_unique($validMimeTypes);
     }
 
     private function processVideoFile($file, $tool, $settings)
     {
-        $uniqueId = Str::uuid();
         $originalName = $file->getClientOriginalName();
         $extension = $file->getClientOriginalExtension();
+        $filename = pathinfo($originalName, PATHINFO_FILENAME);
+        $uniqueId = Str::uuid();
         
-        // Store input file
-        $inputPath = "video-tools/inputs/{$uniqueId}_{$originalName}";
-        $file->storeAs('', $inputPath);
+        Log::info("Starting video processing", [
+            'file' => $originalName,
+            'tool' => $tool,
+            'size' => $file->getSize()
+        ]);
         
-        Log::info('Video file stored', ['path' => $inputPath]);
+        // Create database record
+        $processing = VideoProcessing::create([
+            'user_id' => auth()->id() ?? 1,
+            'tool_name' => $tool,
+            'original_filename' => $originalName,
+            'original_path' => 'video-tools/inputs/' . $uniqueId . '.' . $extension,
+            'original_file_size' => $file->getSize(),
+            'status' => 'processing',
+            'progress' => 0,
+            'processing_settings' => json_encode($settings),
+            'started_at' => now()
+        ]);
 
-        // Process with tool
-        $result = $this->processWithTool(
-            Storage::path($inputPath),
-            $tool,
-            $settings,
-            $uniqueId,
-            $originalName
-        );
+        try {
+            // Store input file
+            $inputPath = 'video-tools/inputs/' . $uniqueId . '.' . $extension;
+            Storage::put($inputPath, $file->get());
+            Log::info("Input file stored", ['path' => $inputPath]);
 
-        return $result;
+            // Process based on tool type
+            Log::info("About to process with tool", ['tool' => $tool, 'input_path' => $inputPath]);
+            $outputPath = $this->processWithTool($inputPath, $tool, $settings, $uniqueId, $filename);
+            $outputFilename = basename($outputPath);
+            Log::info("File processed successfully", [
+                'tool' => $tool,
+                'output_path' => $outputPath,
+                'output_filename' => $outputFilename
+            ]);
+
+            // Update processing record
+            $processing->update([
+                'converted_filename' => $outputFilename,
+                'converted_path' => $outputPath,
+                'converted_file_size' => Storage::size($outputPath),
+                'status' => 'completed',
+                'progress' => 100,
+                'completed_at' => now()
+            ]);
+
+            Log::info("Processing completed successfully", ['id' => $processing->id]);
+
+            return [
+                'id' => $processing->id,
+                'filename' => $originalName,
+                'status' => 'completed',
+                'download_url' => route('video-tools.download', ['id' => $processing->id]),
+                'output_path' => $outputPath,
+                'output_filename' => $outputFilename
+            ];
+
+        } catch (\Exception $e) {
+            Log::error("Processing failed for {$originalName}: " . $e->getMessage(), [
+                'tool' => $tool,
+                'file' => $originalName,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            $processing->update([
+                'status' => 'failed',
+                'error_message' => $e->getMessage(),
+                'completed_at' => now()
+            ]);
+
+            return [
+                'id' => $processing->id,
+                'filename' => $originalName,
+                'status' => 'failed',
+                'error' => $e->getMessage()
+            ];
+        }
     }
 
     private function processWithTool($inputPath, $tool, $settings, $uniqueId, $filename)
     {
+        $tempInputPath = storage_path('app/' . $inputPath);
+        
+        // Determine output extension based on tool
         $outputExtension = $this->getOutputExtension($tool, $settings);
-        $outputFilename = pathinfo($filename, PATHINFO_FILENAME) . '_processed.' . $outputExtension;
-        $outputPath = Storage::path("video-tools/outputs/{$uniqueId}_{$outputFilename}");
-
+        
+        // Generate output filename with correct extension
+        $outputFilename = $uniqueId . '_output.' . $outputExtension;
+        $outputPath = 'video-tools/outputs/' . $outputFilename;
+        
+        Log::info("Output path determined", [
+            'tool' => $tool,
+            'output_extension' => $outputExtension,
+            'output_path' => $outputPath
+        ]);
+        $tempOutputPath = storage_path('app/' . $outputPath);
+        
         // Ensure output directory exists
-        $outputDir = dirname($outputPath);
+        $outputDir = dirname($tempOutputPath);
         if (!file_exists($outputDir)) {
             mkdir($outputDir, 0755, true);
         }
-
-        Log::info('Processing video with tool', [
-            'tool' => $tool,
-            'input' => $inputPath,
-            'output' => $outputPath,
-            'settings' => $settings
-        ]);
-
-        // Process video based on tool
-        $success = $this->processVideo($inputPath, $outputPath, $tool, $settings);
-
-        if ($success && file_exists($outputPath)) {
-            return [
-                'filename' => $outputFilename,
-                'status' => 'completed',
-                'download_url' => route('video-tools.download', ['filename' => $uniqueId . '_' . $outputFilename])
-            ];
-        } else {
-            return [
-                'filename' => $filename,
-                'status' => 'failed',
-                'message' => 'Video processing failed'
-            ];
+        
+        // Process video with FFmpeg
+        $success = $this->processVideo($tempInputPath, $tempOutputPath, $tool, $settings);
+        
+        // Verify output file exists and has content
+        if (!file_exists($tempOutputPath) || filesize($tempOutputPath) === 0) {
+            throw new \Exception("Output file was not created or is empty: {$tempOutputPath}");
         }
+        
+        Log::info("Video processing completed", [
+            'tool' => $tool,
+            'input_extension' => pathinfo($tempInputPath, PATHINFO_EXTENSION),
+            'output_extension' => $outputExtension,
+            'output_size' => filesize($tempOutputPath)
+        ]);
+        
+        return $outputPath;
     }
 
     private function processVideo($inputPath, $outputPath, $tool, $settings)
@@ -184,92 +364,93 @@ class VideoToolsController extends Controller
 
     private function buildFFmpegCommand($inputPath, $outputPath, $tool, $settings)
     {
-        $quality = $settings['quality'] ?? 'high';
-        $resolution = $settings['resolution'] ?? '1080p';
-        $fps = $settings['fps'] ?? '30';
-        $codec = $settings['codec'] ?? 'h264';
-        $bitrate = $settings['bitrate'] ?? 'auto';
+        // Handle special case for video-to-gif first
+        if ($tool === 'video-to-gif') {
+            return "ffmpeg -i \"$inputPath\" -vf \"fps=10,scale=320:-1:flags=lanczos\" -y \"$outputPath\"";
+        }
 
         // Base command
         $command = "ffmpeg -i \"$inputPath\"";
 
-        // Video codec
-        switch ($codec) {
-            case 'h264':
-                $command .= " -c:v libx264";
-                break;
-            case 'h265':
-                $command .= " -c:v libx265";
-                break;
-            case 'vp9':
-                $command .= " -c:v libvpx-vp9";
-                break;
-            case 'av1':
-                $command .= " -c:v libaom-av1";
-                break;
-        }
-
-        // Quality preset
-        switch ($quality) {
-            case 'low':
-                $command .= " -preset fast -crf 28";
-                break;
-            case 'medium':
-                $command .= " -preset medium -crf 23";
-                break;
-            case 'high':
-                $command .= " -preset slow -crf 18";
-                break;
-            case 'ultra':
-                $command .= " -preset veryslow -crf 15";
-                break;
-        }
-
-        // Resolution
-        switch ($resolution) {
-            case '480p':
-                $command .= " -s 854x480";
-                break;
-            case '720p':
-                $command .= " -s 1280x720";
-                break;
-            case '1080p':
-                $command .= " -s 1920x1080";
-                break;
-            case '1440p':
-                $command .= " -s 2560x1440";
-                break;
-            case '4k':
-                $command .= " -s 3840x2160";
-                break;
-        }
-
-        // Frame rate
-        $command .= " -r $fps";
-
-        // Bitrate (if not auto)
-        if ($bitrate !== 'auto') {
-            $command .= " -b:v $bitrate";
-        }
-
-        // Tool-specific processing
+        // Tool-specific handling
         switch ($tool) {
             case 'compress-video':
-                $command .= " -crf 28 -preset fast";
+                $bitrate = $settings['bitrate'] ?? '2000';
+                $resolution = $settings['resolution'] ?? 'original';
+                $frameRate = $settings['frameRate'] ?? 'original';
+                
+                $command .= " -c:v libx264 -preset fast -crf 28";
+                
+                if ($bitrate !== 'original') {
+                    $command .= " -b:v {$bitrate}k";
+                }
+                
+                if ($resolution !== 'original') {
+                    $resolutionMap = [
+                        '480p' => '854:480',
+                        '720p' => '1280:720',
+                        '1080p' => '1920:1080',
+                        '1440p' => '2560:1440',
+                        '2160p' => '3840:2160'
+                    ];
+                    if (isset($resolutionMap[$resolution])) {
+                        $command .= " -vf scale={$resolutionMap[$resolution]}";
+                    }
+                }
+                
+                if ($frameRate !== 'original') {
+                    $command .= " -r {$frameRate}";
+                }
                 break;
                 
-            case 'resize-video':
-                // Resolution already handled above
+            case 'change-resolution':
+                $resolution = $settings['resolution'] ?? '720p';
+                $resolutionMap = [
+                    '480p' => '854:480',
+                    '720p' => '1280:720',
+                    '1080p' => '1920:1080',
+                    '1440p' => '2560:1440',
+                    '2160p' => '3840:2160'
+                ];
+                
+                $command .= " -c:v libx264";
+                if ($resolution !== 'original' && isset($resolutionMap[$resolution])) {
+                    $command .= " -vf scale={$resolutionMap[$resolution]}";
+                }
                 break;
                 
-            case 'trim-video':
-                $start = $settings['start'] ?? 0;
-                $duration = $settings['duration'] ?? 30;
-                $command .= " -ss $start -t $duration";
+            case 'change-bitrate':
+                $bitrate = $settings['bitrate'] ?? '2000';
+                $command .= " -c:v libx264";
+                if ($bitrate !== 'original') {
+                    $command .= " -b:v {$bitrate}k";
+                }
+                break;
+                
+            case 'change-fps':
+                $frameRate = $settings['frameRate'] ?? '30';
+                $command .= " -c:v libx264";
+                if ($frameRate !== 'original') {
+                    $command .= " -r {$frameRate}";
+                }
+                break;
+                
+            // Format conversion tools
+            case 'mp4-to-avi':
+            case 'avi-to-mp4':
+            case 'mkv-to-mp4':
+            case 'mov-to-mp4':
+            case 'webm-to-mp4':
+            case 'mp4-to-webm':
+                $command .= " -c:v libx264 -preset medium -crf 23";
+                break;
+                
+            default:
+                $command .= " -c:v libx264 -preset medium -crf 23";
                 break;
         }
 
-        // Audio codec
+        // Audio codec for all tools except GIF
         $command .= " -c:a aac -b:a 128k";
 
         // Output file
@@ -293,43 +474,66 @@ class VideoToolsController extends Controller
             case 'avi-to-mp4':
             case 'mkv-to-mp4':
             case 'mov-to-mp4':
+            case 'webm-to-mp4':
                 return 'mp4';
             case 'mp4-to-webm':
                 return 'webm';
-            case 'mp4-to-gif':
+            case 'video-to-gif':
                 return 'gif';
+            case 'compress-video':
+            case 'change-resolution':
+            case 'change-bitrate':
+            case 'change-fps':
+                return 'mp4'; // Keep original format as MP4 for optimization tools
             default:
                 return $settings['format'] ?? 'mp4'; // Default to MP4
         }
     }
 
-    public function download($filename)
+    public function download($id)
     {
         try {
-            Log::info('Video download requested', ['filename' => $filename]);
+            Log::info('Video download requested', ['id' => $id]);
             
-            $filePath = "video-tools/outputs/{$filename}";
+            $processing = VideoProcessing::findOrFail($id);
             
-            if (!Storage::exists($filePath)) {
-                Log::error('Video file not found for download', ['path' => $filePath]);
+            if ($processing->status !== 'completed' || !$processing->converted_filename) {
+                Log::error('Video file not ready for download', [
+                    'id' => $id,
+                    'status' => $processing->status,
+                    'converted_filename' => $processing->converted_filename
+                ]);
+                return response()->json(['error' => 'File not ready for download'], 404);
+            }
+
+            $filePath = storage_path('app/' . $processing->converted_path);
+            
+            if (!file_exists($filePath)) {
+                Log::error('Video file not found for download', [
+                    'id' => $id,
+                    'converted_path' => $processing->converted_path,
+                    'file_path' => $filePath
+                ]);
                 return response()->json(['error' => 'File not found'], 404);
             }
 
-            $fullPath = Storage::path($filePath);
-            $originalName = preg_replace('/^[a-f0-9-]+_/', '', $filename);
+            $originalName = $processing->original_filename;
+            $extension = pathinfo($processing->converted_filename, PATHINFO_EXTENSION);
+            $downloadName = pathinfo($originalName, PATHINFO_FILENAME) . '_processed.' . $extension;
 
             Log::info('Video download starting', [
-                'path' => $fullPath,
-                'original_name' => $originalName,
-                'file_exists' => file_exists($fullPath),
-                'file_size' => file_exists($fullPath) ? filesize($fullPath) : 0
+                'path' => $filePath,
+                'download_name' => $downloadName,
+                'file_exists' => file_exists($filePath),
+                'file_size' => file_exists($filePath) ? filesize($filePath) : 0
             ]);
 
-            return response()->download($fullPath, $originalName);
+            return response()->download($filePath, $downloadName);
 
         } catch (\Exception $e) {
             Log::error('Video download error', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Download failed'], 500);
         }
     }
+
 }
