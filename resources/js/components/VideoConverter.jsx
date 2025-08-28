@@ -196,7 +196,13 @@ const VideoConverter = () => {
         setSelectedTool(tool);
         setSelectedFiles([]);
         setResults([]);
-        setToolSettings({});
+        setSettings({
+            quality: 'medium',
+            format: 'auto',
+            bitrate: '2000',
+            resolution: 'original',
+            frameRate: 'original'
+        });
     };
 
     const processFiles = async () => {
@@ -211,9 +217,22 @@ const VideoConverter = () => {
             });
             formData.append('tool', selectedTool.id);
             
-            // Send settings as individual form fields instead of JSON string
-            Object.keys(toolSettings).forEach(key => {
-                formData.append(`settings[${key}]`, toolSettings[key]);
+            // Determine output format based on tool
+            let outputFormat = 'mp4'; // default
+            if (selectedTool.id.includes('to-avi')) outputFormat = 'avi';
+            else if (selectedTool.id.includes('to-webm')) outputFormat = 'webm';
+            else if (selectedTool.id.includes('to-gif')) outputFormat = 'gif';
+            else if (selectedTool.id.includes('to-mp4')) outputFormat = 'mp4';
+            
+            // Add output format to settings
+            const settingsWithFormat = {
+                ...settings,
+                format: outputFormat
+            };
+            
+            // Send settings as individual form fields
+            Object.keys(settingsWithFormat).forEach(key => {
+                formData.append(`settings[${key}]`, settingsWithFormat[key]);
             });
             
             formData.append('_token', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'));
@@ -287,11 +306,27 @@ const VideoConverter = () => {
                 throw new Error('Downloaded file is empty');
             }
 
+            // Get the correct file extension based on the tool
+            let fileExtension = 'mp4'; // default
+            if (selectedTool) {
+                if (selectedTool.id.includes('to-avi')) fileExtension = 'avi';
+                else if (selectedTool.id.includes('to-webm')) fileExtension = 'webm';
+                else if (selectedTool.id.includes('to-gif')) fileExtension = 'gif';
+                else if (selectedTool.id.includes('to-mp4')) fileExtension = 'mp4';
+            }
+
+            // Ensure the filename has the correct extension
+            let downloadFilename = filename || 'converted-video';
+            if (!downloadFilename.endsWith(`.${fileExtension}`)) {
+                // Remove any existing extension and add the correct one
+                downloadFilename = downloadFilename.replace(/\.[^/.]+$/, '') + `.${fileExtension}`;
+            }
+
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = filename || 'download';
+            a.download = downloadFilename;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
