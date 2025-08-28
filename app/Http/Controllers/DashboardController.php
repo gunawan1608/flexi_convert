@@ -26,6 +26,9 @@ class DashboardController extends Controller
             ->get()
             ->map(function ($conversion) {
                 $conversion->conversion_type = 'document';
+                $conversion->original_extension = pathinfo($conversion->original_filename, PATHINFO_EXTENSION);
+                $conversion->target_extension = $this->getPdfTargetExtension($conversion->tool_name);
+                $conversion->file_size_human = $this->formatBytes($conversion->file_size ?? 0);
                 return $conversion;
             });
 
@@ -115,6 +118,31 @@ class DashboardController extends Controller
         ];
 
         return view('dashboard.index', compact('stats'));
+    }
+
+    private function getPdfTargetExtension($toolName)
+    {
+        // Map PDF tool names to target extensions
+        $toolMap = [
+            'word-to-pdf' => 'pdf',
+            'excel-to-pdf' => 'pdf',
+            'ppt-to-pdf' => 'pdf',
+            'html-to-pdf' => 'pdf',
+            'jpg-to-pdf' => 'pdf',
+            'png-to-pdf' => 'pdf',
+            'pdf-to-word' => 'docx',
+            'pdf-to-excel' => 'xlsx',
+            'pdf-to-ppt' => 'pptx',
+            'pdf-to-jpg' => 'jpg',
+            'compress-pdf' => 'pdf',
+            'merge-pdf' => 'pdf',
+            'split-pdf' => 'pdf',
+            'rotate-pdf' => 'pdf',
+            'add-watermark' => 'pdf',
+            'add-page-numbers' => 'pdf',
+        ];
+
+        return $toolMap[$toolName] ?? 'pdf';
     }
 
     private function getTargetExtension($toolName)

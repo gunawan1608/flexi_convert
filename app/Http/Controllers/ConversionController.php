@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use App\Models\PdfProcessing;
 use App\Models\ImageProcessing;
+use App\Models\VideoProcessing;
+use App\Models\AudioProcessing;
 use Carbon\Carbon;
 
 class ConversionController extends Controller
@@ -23,43 +25,96 @@ class ConversionController extends Controller
             $user = Auth::user();
             $perPage = 15;
             
-            $query = PdfProcessing::where('user_id', $user->id);
+            // Get conversions from all processing types
+            $pdfConversions = PdfProcessing::where('user_id', $user->id)
+                ->get()
+                ->map(function ($conversion) {
+                    $conversion->conversion_type = 'document';
+                    $conversion->file_size_human = $this->formatBytes($conversion->file_size ?? 0);
+                    return $conversion;
+                });
+
+            $imageConversions = ImageProcessing::where('user_id', $user->id)
+                ->get()
+                ->map(function ($conversion) {
+                    $conversion->conversion_type = 'image';
+                    $conversion->file_size_human = $this->formatBytes($conversion->file_size ?? 0);
+                    return $conversion;
+                });
+
+            $videoConversions = VideoProcessing::where('user_id', $user->id)
+                ->get()
+                ->map(function ($conversion) {
+                    $conversion->conversion_type = 'video';
+                    $conversion->file_size_human = $this->formatBytes($conversion->original_file_size ?? 0);
+                    return $conversion;
+                });
+
+            $audioConversions = AudioProcessing::where('user_id', $user->id)
+                ->get()
+                ->map(function ($conversion) {
+                    $conversion->conversion_type = 'audio';
+                    $conversion->file_size_human = $this->formatBytes($conversion->original_file_size ?? 0);
+                    return $conversion;
+                });
+
+            // Combine all conversions
+            $allConversions = $pdfConversions->concat($imageConversions)
+                ->concat($videoConversions)
+                ->concat($audioConversions);
 
             // Apply filters
             if ($request->filter && $request->filter !== 'all') {
-                $query->where('status', $request->filter);
+                $allConversions = $allConversions->where('status', $request->filter);
             }
 
             // Apply search
             if ($request->search) {
-                $query->where(function($q) use ($request) {
-                    $q->where('original_filename', 'like', '%' . $request->search . '%')
-                      ->orWhere('processed_filename', 'like', '%' . $request->search . '%')
-                      ->orWhere('tool_name', 'like', '%' . $request->search . '%');
+                $searchTerm = strtolower($request->search);
+                $allConversions = $allConversions->filter(function($conversion) use ($searchTerm) {
+                    return str_contains(strtolower($conversion->original_filename ?? ''), $searchTerm) ||
+                           str_contains(strtolower($conversion->processed_filename ?? ''), $searchTerm) ||
+                           str_contains(strtolower($conversion->tool_name ?? ''), $searchTerm);
                 });
             }
 
             // Apply sorting
             switch ($request->sort) {
                 case 'oldest':
-                    $query->orderBy('created_at', 'asc');
+                    $allConversions = $allConversions->sortBy('created_at');
                     break;
                 case 'name':
-                    $query->orderBy('original_filename', 'asc');
+                    $allConversions = $allConversions->sortBy('original_filename');
                     break;
                 case 'size':
-                    $query->orderBy('file_size', 'desc');
+                    $allConversions = $allConversions->sortByDesc(function($conversion) {
+                        return $conversion->file_size ?? $conversion->original_file_size ?? 0;
+                    });
                     break;
                 default: // newest
-                    $query->orderBy('created_at', 'desc');
+                    $allConversions = $allConversions->sortByDesc('created_at');
                     break;
             }
 
-            $conversions = $query->paginate($perPage);
+            // Manual pagination
+            $currentPage = $request->get('page', 1);
+            $offset = ($currentPage - 1) * $perPage;
+            $items = $allConversions->slice($offset, $perPage)->values();
+            $total = $allConversions->count();
+
+            $paginatedData = [
+                'data' => $items,
+                'current_page' => $currentPage,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => ceil($total / $perPage),
+                'from' => $offset + 1,
+                'to' => min($offset + $perPage, $total)
+            ];
 
             return response()->json([
                 'success' => true,
-                'conversions' => $conversions
+                'conversions' => $paginatedData
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -74,24 +129,34 @@ class ConversionController extends Controller
         try {
             $user = Auth::user();
             
-            $total = PdfProcessing::where('user_id', $user->id)->count();
-            $completed = PdfProcessing::where('user_id', $user->id)
-                ->where('status', 'completed')
-                ->count();
-            $processing = PdfProcessing::where('user_id', $user->id)
-                ->where('status', 'processing')
-                ->count();
-            $failed = PdfProcessing::where('user_id', $user->id)
-                ->where('status', 'failed')
-                ->count();
+            // Get stats from all conversion types
+            $pdfTotal = PdfProcessing::where('user_id', $user->id)->count();
+            $pdfCompleted = PdfProcessing::where('user_id', $user->id)->where('status', 'completed')->count();
+            $pdfProcessing = PdfProcessing::where('user_id', $user->id)->where('status', 'processing')->count();
+            $pdfFailed = PdfProcessing::where('user_id', $user->id)->where('status', 'failed')->count();
+
+            $imageTotal = ImageProcessing::where('user_id', $user->id)->count();
+            $imageCompleted = ImageProcessing::where('user_id', $user->id)->where('status', 'completed')->count();
+            $imageProcessing = ImageProcessing::where('user_id', $user->id)->where('status', 'processing')->count();
+            $imageFailed = ImageProcessing::where('user_id', $user->id)->where('status', 'failed')->count();
+
+            $videoTotal = VideoProcessing::where('user_id', $user->id)->count();
+            $videoCompleted = VideoProcessing::where('user_id', $user->id)->where('status', 'completed')->count();
+            $videoProcessing = VideoProcessing::where('user_id', $user->id)->where('status', 'processing')->count();
+            $videoFailed = VideoProcessing::where('user_id', $user->id)->where('status', 'failed')->count();
+
+            $audioTotal = AudioProcessing::where('user_id', $user->id)->count();
+            $audioCompleted = AudioProcessing::where('user_id', $user->id)->where('status', 'completed')->count();
+            $audioProcessing = AudioProcessing::where('user_id', $user->id)->where('status', 'processing')->count();
+            $audioFailed = AudioProcessing::where('user_id', $user->id)->where('status', 'failed')->count();
 
             return response()->json([
                 'success' => true,
                 'stats' => [
-                    'total' => $total,
-                    'completed' => $completed,
-                    'processing' => $processing,
-                    'failed' => $failed
+                    'total' => $pdfTotal + $imageTotal + $videoTotal + $audioTotal,
+                    'completed' => $pdfCompleted + $imageCompleted + $videoCompleted + $audioCompleted,
+                    'processing' => $pdfProcessing + $imageProcessing + $videoProcessing + $audioProcessing,
+                    'failed' => $pdfFailed + $imageFailed + $videoFailed + $audioFailed
                 ]
             ]);
         } catch (\Exception $e) {
@@ -187,5 +252,16 @@ class ConversionController extends Controller
                 'message' => 'Failed to delete conversion: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    private function formatBytes($bytes)
+    {
+        if ($bytes == 0) return '0 B';
+        
+        $k = 1024;
+        $sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $i = floor(log($bytes) / log($k));
+        
+        return round($bytes / pow($k, $i), 2) . ' ' . $sizes[$i];
     }
 }
