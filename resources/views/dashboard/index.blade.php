@@ -290,7 +290,7 @@
                                                     </a>
                                                     @break
                                                 @default
-                                                    <a href="{{ route('documents.download', $conversion->id) }}" 
+                                                    <a href="{{ route('pdf-tools.download', $conversion->id) }}" 
                                                        class="inline-flex items-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors duration-200">
                                                         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3"></path>

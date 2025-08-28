@@ -1055,12 +1055,29 @@ class PDFToolsController extends Controller
             $fileContent = Storage::get($filePath);
             $mimeType = Storage::mimeType($filePath);
             
-            // Use friendly filename for download
+            // Use friendly filename for download with proper encoding
             $downloadFilename = $processing->friendly_filename ?? $processing->processed_filename;
             
+            // Simple approach: use friendly filename directly with proper escaping
+            $safeFilename = str_replace(['"', '\\', '/'], ['_', '_', '_'], $downloadFilename);
+            
+            // For Content-Disposition, use RFC 5987 encoding
+            $encodedFilename = "UTF-8''" . rawurlencode($downloadFilename);
+            
+            // Debug logging
+            Log::info('Download filename debug', [
+                'friendly_filename' => $processing->friendly_filename,
+                'processed_filename' => $processing->processed_filename,
+                'download_filename' => $downloadFilename,
+                'safe_filename' => $safeFilename,
+                'encoded_filename' => $encodedFilename
+            ]);
+
             return response($fileContent)
                 ->header('Content-Type', $mimeType)
-                ->header('Content-Disposition', 'attachment; filename="' . $downloadFilename . '"');
+                ->header('Content-Disposition', 'attachment; filename="' . $safeFilename . '"; filename*=' . $encodedFilename)
+                ->header('Cache-Control', 'no-cache, must-revalidate')
+                ->header('Content-Length', strlen($fileContent));
 
         } catch (Exception $e) {
             Log::error("Download failed: " . $e->getMessage());

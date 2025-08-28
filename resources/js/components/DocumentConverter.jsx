@@ -232,9 +232,25 @@ const DocumentConverter = () => {
             const formData = new FormData();
             selectedFiles.forEach(file => {
                 formData.append('files[]', file);
+                // Add original filenames to track them
+                formData.append('original_filenames[]', file.name);
             });
             formData.append('tool', selectedTool.id);
-            formData.append('settings', JSON.stringify(toolSettings));
+            
+            // Determine output format based on tool
+            let outputFormat = 'pdf'; // default
+            if (selectedTool.id.startsWith('pdf-to-')) {
+                outputFormat = selectedTool.id.split('-').pop();
+                if (outputFormat === 'jpg') outputFormat = 'jpeg'; // Fix for jpg vs jpeg
+            }
+            
+            // Add output format to settings
+            const settingsWithFormat = {
+                ...toolSettings,
+                format: outputFormat
+            };
+            
+            formData.append('settings', JSON.stringify(settingsWithFormat));
 
             setProcessingStatus('Processing conversion...');
 
@@ -246,9 +262,22 @@ const DocumentConverter = () => {
             if (response.success) {
                 setProcessingStatus('Conversion completed!');
                 setDownloadUrl(response.download_url);
-                setOutputFilename(response.output_filename);
+                
+                // Generate a meaningful output filename
+                let outputFilename = '';
+                if (selectedFiles.length === 1) {
+                    // For single file, use original name with new extension
+                    const originalName = selectedFiles[0].name.replace(/\.[^/.]+$/, '');
+                    outputFilename = `${originalName}.${outputFormat}`;
+                } else {
+                    // For multiple files, use a generic name with timestamp
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                    outputFilename = `converted_documents_${timestamp}.${outputFormat}`;
+                }
+                
+                setOutputFilename(outputFilename);
                 setResults([{
-                    filename: response.output_filename,
+                    filename: outputFilename,
                     status: 'completed',
                     download_url: response.download_url,
                     processing_id: response.processing_id
@@ -313,11 +342,51 @@ const DocumentConverter = () => {
                 throw new Error('Downloaded file is empty');
             }
 
+            // Get the content disposition header to check for filename
+            const contentDisposition = response.headers.get('content-disposition');
+            let downloadFilename = filename || 'download';
+            
+            // Extract filename from content disposition if available
+            if (contentDisposition) {
+                console.log('Content-Disposition header:', contentDisposition);
+                
+                // Try to extract filename from filename*= parameter first (UTF-8 encoded)
+                let filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/);
+                if (filenameMatch && filenameMatch[1]) {
+                    downloadFilename = decodeURIComponent(filenameMatch[1]);
+                    console.log('Extracted UTF-8 filename:', downloadFilename);
+                } else {
+                    // Fallback to regular filename parameter
+                    filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+                    if (filenameMatch && filenameMatch[1]) {
+                        downloadFilename = filenameMatch[1];
+                        console.log('Extracted regular filename:', downloadFilename);
+                    }
+                }
+            }
+
+            // Ensure the filename has the correct extension based on the tool
+            if (selectedTool) {
+                let fileExtension = 'pdf'; // default
+                
+                if (selectedTool.id.startsWith('pdf-to-')) {
+                    fileExtension = selectedTool.id.split('-').pop();
+                    if (fileExtension === 'jpg') fileExtension = 'jpeg'; // Fix for jpg vs jpeg
+                } else if (selectedTool.id.endsWith('-to-pdf')) {
+                    fileExtension = 'pdf';
+                }
+                
+                // Remove any existing extension and add the correct one
+                if (!downloadFilename.endsWith(`.${fileExtension}`)) {
+                    downloadFilename = downloadFilename.replace(/\.[^/.]+$/, '') + `.${fileExtension}`;
+                }
+            }
+
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = filename || 'download';
+            a.download = downloadFilename;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);

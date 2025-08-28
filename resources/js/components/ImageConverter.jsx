@@ -162,10 +162,28 @@ const ImageConverter = () => {
         
         try {
             const formData = new FormData();
+            // Store original filenames
+            const originalFilenames = [];
+            
             selectedFiles.forEach(file => {
                 formData.append('files[]', file);
+                originalFilenames.push(file.name);
             });
+            
+            // Determine output format based on tool
+            let outputFormat = '';
+            if (selectedTool.id.includes('to-')) {
+                outputFormat = selectedTool.id.split('to-')[1];
+                if (outputFormat === 'jpg') outputFormat = 'jpeg'; // Standardize jpg to jpeg
+            } else if (selectedTool.id === 'resize-image' || selectedTool.id === 'rotate-image') {
+                // For tools that don't change format, keep original format
+                const fileExt = selectedFiles[0].name.split('.').pop().toLowerCase();
+                outputFormat = fileExt === 'jpg' ? 'jpeg' : fileExt;
+            }
+            
             formData.append('tool', selectedTool.id);
+            formData.append('output_format', outputFormat);
+            formData.append('original_filenames', JSON.stringify(originalFilenames));
             
             // Add custom settings for resize and rotate tools
             if (selectedTool.id === 'resize-image') {
@@ -257,6 +275,37 @@ const ImageConverter = () => {
                 throw new Error(`Download failed: ${response.status} ${response.statusText}`);
             }
 
+            // Get the content disposition header to extract filename if available
+            const contentDisposition = response.headers.get('content-disposition');
+            let downloadFilename = filename || 'download';
+            
+            // Try to extract filename from content-disposition header
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (filenameMatch && filenameMatch[1]) {
+                    downloadFilename = filenameMatch[1].replace(/['"]/g, '');
+                }
+            }
+            
+            // If we have a selected tool and no filename from server, generate one
+            if ((!downloadFilename || downloadFilename === 'download') && selectedTool && selectedFiles.length > 0) {
+                const inputFilename = selectedFiles[0].name;
+                const baseName = inputFilename.includes('.') 
+                    ? inputFilename.substring(0, inputFilename.lastIndexOf('.')) 
+                    : inputFilename;
+                    
+                // Determine the correct extension based on tool
+                let extension = '';
+                if (selectedTool.id.includes('to-')) {
+                    extension = selectedTool.id.split('to-')[1];
+                } else {
+                    // For tools that don't change format, keep original extension
+                    extension = inputFilename.split('.').pop().toLowerCase();
+                }
+                
+                downloadFilename = `${baseName}.${extension}`;
+            }
+
             const blob = await response.blob();
             console.log('Downloaded blob size:', blob.size);
             
@@ -268,16 +317,19 @@ const ImageConverter = () => {
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = filename || 'download';
+            a.download = downloadFilename;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
             
-            console.log('Download completed successfully');
+            // Update the output filename in state for the UI
+            setOutputFilename(downloadFilename);
+            
+            console.log('Download completed successfully as:', downloadFilename);
         } catch (error) {
             console.error('Download error details:', error);
-            alert(`Download failed: ${error.message}. Check console for details.`);
+            setErrorMessage(`Download failed: ${error.message}`);
         }
     };
 

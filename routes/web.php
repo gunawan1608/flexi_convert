@@ -6,7 +6,6 @@ use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\CsrfTokenController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\HomeController;
 use Illuminate\Support\Facades\Route;
 
@@ -92,8 +91,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/download/{id}', [App\Http\Controllers\PDFToolsController::class, 'download'])->name('download');
     });
     
-    // Document conversion routes
-    Route::get('/documents/download/{id}', [DocumentController::class, 'download'])->name('documents.download');
+    // Document conversion routes (now handled by PDFToolsController)
+    Route::get('/documents/download/{id}', [App\Http\Controllers\PDFToolsController::class, 'download'])->name('documents.download');
     
     // Image Tools API routes
     Route::prefix('api/image-tools')->name('image-tools.')->group(function () {

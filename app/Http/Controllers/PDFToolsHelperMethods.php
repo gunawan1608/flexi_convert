@@ -7,21 +7,11 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\IOFactory as WordIOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-use PhpOffice\PhpPresentation\PhpPresentation;
-use PhpOffice\PhpPresentation\Writer\PowerPoint2007;
-use PhpOffice\PhpPresentation\IOFactory;
-use PhpOffice\PhpPresentation\Style\Alignment;
-use PhpOffice\PhpPresentation\Style\Color;
-use Imagick;
-use Smalot\PdfParser\Parser;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Process\Exception\ProcessFailedException;
-use Exception;
+use App\Models\PdfProcessing;
 use Slide\Layout;
 use Smalot\PdfParser\Parser as PdfParser;
-use App\Models\PdfProcessing;
 
 /**
  * PDFToolsHelperMethods adalah class helper statis, bukan trait. 
@@ -41,37 +31,62 @@ class PDFToolsHelperMethods
             return $configPath;
         }
 
-        $commonPaths = [
-            // Windows
-            'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
-            'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
-            // Linux
+        // Common LibreOffice paths
+        $paths = [
             '/usr/bin/libreoffice',
             '/usr/bin/soffice',
-            '/snap/bin/libreoffice',
-            // macOS
+            '/opt/libreoffice/program/soffice',
             '/Applications/LibreOffice.app/Contents/MacOS/soffice',
+            'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+            'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
+            'C:\\Program Files\\LibreOffice\\program\\soffice.com'
         ];
 
-        foreach ($commonPaths as $path) {
+        foreach ($paths as $path) {
             if (file_exists($path)) {
+                Log::info('LibreOffice found at path', ['path' => $path]);
                 return $path;
             }
         }
 
-        // Try to find in PATH
-        $process = new Process(['which', 'soffice']);
-        $process->run();
-        if ($process->isSuccessful()) {
-            return trim($process->getOutput());
+        // Try to find using system commands
+        if (PHP_OS_FAMILY === 'Windows') {
+            // Windows: try where command for soffice
+            $process = new Process(['where', 'soffice']);
+            $process->run();
+            if ($process->isSuccessful()) {
+                $path = trim($process->getOutput());
+                Log::info('LibreOffice found via where command', ['path' => $path]);
+                return $path;
+            }
+            
+            // Also try direct soffice command (it's in PATH)
+            $process = new Process(['soffice', '--version']);
+            $process->run();
+            if ($process->isSuccessful()) {
+                Log::info('LibreOffice accessible via soffice command');
+                return 'soffice'; // Return command name if accessible via PATH
+            }
+        } else {
+            // Unix: try which command
+            $process = new Process(['which', 'soffice']);
+            $process->run();
+            if ($process->isSuccessful()) {
+                $path = trim($process->getOutput());
+                Log::info('LibreOffice found via which command', ['path' => $path]);
+                return $path;
+            }
+
+            $process = new Process(['which', 'libreoffice']);
+            $process->run();
+            if ($process->isSuccessful()) {
+                $path = trim($process->getOutput());
+                Log::info('LibreOffice found via which command', ['path' => $path]);
+                return $path;
+            }
         }
 
-        $process = new Process(['which', 'libreoffice']);
-        $process->run();
-        if ($process->isSuccessful()) {
-            return trim($process->getOutput());
-        }
-
+        Log::warning('LibreOffice not found in any standard location');
         return null;
     }
 
@@ -112,50 +127,201 @@ class PDFToolsHelperMethods
     }
 
     /**
-     * Convert Office document to PDF using LibreOffice CLI
+     * Convert Office document to PDF using LibreOffice CLI with unique temp directory
      */
     private static function convertWithLibreOffice($inputPath, $outputDir)
     {
         $libreOfficePath = self::findLibreOffice();
         if (!$libreOfficePath) {
-            throw new Exception('LibreOffice not found');
+            Log::warning('LibreOffice not found, will use fallback method');
+            throw new Exception('LibreOffice not found - will use fallback conversion');
         }
 
-        $process = new Process([
-            $libreOfficePath,
-            '--headless',
-            '--convert-to',
-            'pdf',
-            '--outdir',
-            $outputDir,
-            $inputPath
-        ]);
-
-        $process->setTimeout(config('pdftools.libreoffice.timeout', 120));
-        $process->run();
-
-        if (!$process->isSuccessful()) {
-            throw new ProcessFailedException($process);
+        // Create unique temporary directory for this conversion to prevent file collisions
+        $uniqueTempDir = $outputDir . DIRECTORY_SEPARATOR . 'temp_' . Str::uuid();
+        if (!mkdir($uniqueTempDir, 0755, true)) {
+            throw new Exception('Failed to create temporary directory: ' . $uniqueTempDir);
         }
 
-        // Find the generated PDF file using glob instead of assuming filename
-        $pdfFiles = glob($outputDir . DIRECTORY_SEPARATOR . '*.pdf');
-        
-        if (count($pdfFiles) === 0) {
-            throw new Exception('LibreOffice conversion failed - no PDF files found in output directory');
-        }
-        
-        // Get the most recently created PDF file (in case there are multiple)
-        $pdfPath = $pdfFiles[0];
-        if (count($pdfFiles) > 1) {
-            // Sort by modification time, get the newest
-            usort($pdfFiles, function($a, $b) {
-                return filemtime($b) - filemtime($a);
-            });
-            $pdfPath = $pdfFiles[0];
-        }
+        try {
+            // Windows-specific LibreOffice command with proper arguments
+            $command = [
+                $libreOfficePath,
+                '--headless',
+                '--invisible',
+                '--nodefault',
+                '--nolockcheck',
+                '--nologo',
+                '--norestore',
+                '--convert-to',
+                'pdf',
+                '--outdir',
+                $uniqueTempDir,
+                $inputPath
+            ];
 
-        return $pdfPath;
+            $process = new Process($command);
+            $process->setTimeout(config('pdftools.libreoffice.timeout', 120));
+            
+            // Set environment variables for Windows LibreOffice
+            if (PHP_OS_FAMILY === 'Windows') {
+                $env = $_ENV;
+                $env['HOME'] = sys_get_temp_dir();
+                $env['TMPDIR'] = sys_get_temp_dir();
+                $process->setEnv($env);
+            }
+            
+            Log::info('LibreOffice conversion starting', [
+                'command' => $process->getCommandLine(),
+                'input_path' => $inputPath,
+                'input_exists' => file_exists($inputPath),
+                'input_size' => file_exists($inputPath) ? filesize($inputPath) : 0,
+                'temp_dir' => $uniqueTempDir,
+                'temp_dir_exists' => is_dir($uniqueTempDir),
+                'libreoffice_path' => $libreOfficePath
+            ]);
+            
+            $process->run();
+
+            // Log process output for debugging
+            Log::info('LibreOffice process completed', [
+                'exit_code' => $process->getExitCode(),
+                'successful' => $process->isSuccessful(),
+                'output' => $process->getOutput(),
+                'error_output' => $process->getErrorOutput()
+            ]);
+
+            if (!$process->isSuccessful()) {
+                Log::error('LibreOffice process failed', [
+                    'exit_code' => $process->getExitCode(),
+                    'error_output' => $process->getErrorOutput(),
+                    'command' => $process->getCommandLine(),
+                    'exit_code_hex' => dechex($process->getExitCode() & 0xFFFFFFFF)
+                ]);
+                
+                // Windows exit code -1073740791 (0xC0000409) indicates access violation
+                // Try alternative approach with cmd.exe wrapper
+                if (PHP_OS_FAMILY === 'Windows' && ($process->getExitCode() === -1073740791 || $process->getExitCode() !== 0)) {
+                    Log::info('Trying Windows cmd.exe wrapper approach due to exit code: ' . $process->getExitCode());
+                    return self::convertWithLibreOfficeWindows($inputPath, $uniqueTempDir, $outputDir);
+                }
+                
+                throw new ProcessFailedException($process);
+            }
+
+            // Find generated PDF files in the unique temp directory
+            $pdfFiles = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*.pdf');
+            
+            Log::info('LibreOffice output check', [
+                'temp_dir' => $uniqueTempDir,
+                'pdf_files_found' => count($pdfFiles),
+                'all_files' => glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*')
+            ]);
+            
+            if (count($pdfFiles) === 0) {
+                throw new Exception('LibreOffice conversion failed - no PDF files found in temp directory: ' . $uniqueTempDir . '. Check if LibreOffice is properly installed and the input file is valid.');
+            }
+            
+            // Get the first (and should be only) PDF file
+            $tempPdfPath = $pdfFiles[0];
+            
+            // Move the PDF to the final output directory with a unique name
+            $finalPdfName = 'converted_' . Str::uuid() . '.pdf';
+            $finalPdfPath = $outputDir . DIRECTORY_SEPARATOR . $finalPdfName;
+            
+            if (!rename($tempPdfPath, $finalPdfPath)) {
+                throw new Exception('Failed to move converted PDF from temp directory');
+            }
+            
+            Log::info('LibreOffice conversion successful', [
+                'input' => basename($inputPath),
+                'temp_dir' => $uniqueTempDir,
+                'final_path' => $finalPdfPath,
+                'file_size' => filesize($finalPdfPath)
+            ]);
+
+            return $finalPdfPath;
+            
+        } finally {
+            // Clean up temporary directory
+            if (is_dir($uniqueTempDir)) {
+                $files = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*');
+                foreach ($files as $file) {
+                    if (is_file($file)) {
+                        @unlink($file);
+                    }
+                }
+                @rmdir($uniqueTempDir);
+            }
+        }
+    }
+
+    /**
+     * Windows-specific LibreOffice conversion with cmd.exe wrapper
+     */
+    private static function convertWithLibreOfficeWindows($inputPath, $uniqueTempDir, $outputDir)
+    {
+        try {
+            // Use direct soffice command since it's in PATH
+            $cmdLine = "soffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --convert-to pdf --outdir \"{$uniqueTempDir}\" \"{$inputPath}\"";
+            
+            Log::info('Windows LibreOffice conversion with direct command', [
+                'command' => $cmdLine,
+                'input_path' => $inputPath,
+                'temp_dir' => $uniqueTempDir,
+                'input_exists' => file_exists($inputPath),
+                'temp_dir_writable' => is_writable($uniqueTempDir)
+            ]);
+            
+            // Execute with proper timeout and capture all output
+            $output = [];
+            $returnVar = 0;
+            
+            // Change to temp directory to avoid path issues
+            $originalDir = getcwd();
+            chdir($uniqueTempDir);
+            
+            exec($cmdLine . ' 2>&1', $output, $returnVar);
+            
+            // Change back to original directory
+            chdir($originalDir);
+            
+            Log::info('Windows LibreOffice exec result', [
+                'return_code' => $returnVar,
+                'output' => implode("\n", $output)
+            ]);
+            
+            if ($returnVar !== 0) {
+                throw new Exception("LibreOffice Windows conversion failed with code: {$returnVar}. Output: " . implode("\n", $output));
+            }
+            
+            // Find generated PDF files
+            $pdfFiles = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*.pdf');
+            
+            if (count($pdfFiles) === 0) {
+                throw new Exception('LibreOffice Windows conversion failed - no PDF files found');
+            }
+            
+            // Move the PDF to final location
+            $tempPdfPath = $pdfFiles[0];
+            $finalPdfName = 'converted_' . Str::uuid() . '.pdf';
+            $finalPdfPath = $outputDir . DIRECTORY_SEPARATOR . $finalPdfName;
+            
+            if (!rename($tempPdfPath, $finalPdfPath)) {
+                throw new Exception('Failed to move converted PDF from temp directory');
+            }
+            
+            Log::info('Windows LibreOffice conversion successful', [
+                'final_path' => $finalPdfPath,
+                'file_size' => filesize($finalPdfPath)
+            ]);
+            
+            return $finalPdfPath;
+            
+        } catch (Exception $e) {
+            Log::error('Windows LibreOffice conversion failed: ' . $e->getMessage());
+            throw $e;
+        }
     }
 
     /**
