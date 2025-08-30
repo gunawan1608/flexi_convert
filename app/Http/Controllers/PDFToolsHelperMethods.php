@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Exception;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -209,13 +210,22 @@ class PDFToolsHelperMethods
                 throw new ProcessFailedException($process);
             }
 
+            
+            // Add delay to ensure file system operations are complete
+            sleep(1);
+            
             // Find generated PDF files in the unique temp directory
             $pdfFiles = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*.pdf');
+            $allFiles = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*');
             
             Log::info('LibreOffice output check', [
                 'temp_dir' => $uniqueTempDir,
+                'temp_dir_exists' => is_dir($uniqueTempDir),
+                'temp_dir_writable' => is_writable($uniqueTempDir),
                 'pdf_files_found' => count($pdfFiles),
-                'all_files' => glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*')
+                'pdf_files' => $pdfFiles,
+                'all_files_found' => count($allFiles),
+                'all_files' => $allFiles
             ]);
             
             if (count($pdfFiles) === 0) {
@@ -295,8 +305,22 @@ class PDFToolsHelperMethods
                 throw new Exception("LibreOffice Windows conversion failed with code: {$returnVar}. Output: " . implode("\n", $output));
             }
             
+            // Add delay to ensure file system operations are complete
+            sleep(1);
+            
             // Find generated PDF files
             $pdfFiles = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*.pdf');
+            $allFiles = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*');
+            
+            Log::info('Windows LibreOffice output check', [
+                'temp_dir' => $uniqueTempDir,
+                'temp_dir_exists' => is_dir($uniqueTempDir),
+                'temp_dir_writable' => is_writable($uniqueTempDir),
+                'pdf_files_found' => count($pdfFiles),
+                'pdf_files' => $pdfFiles,
+                'all_files_found' => count($allFiles),
+                'all_files' => $allFiles
+            ]);
             
             if (count($pdfFiles) === 0) {
                 throw new Exception('LibreOffice Windows conversion failed - no PDF files found');

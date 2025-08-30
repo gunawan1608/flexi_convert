@@ -517,23 +517,138 @@ class VideoToolsController extends Controller
                 return response()->json(['error' => 'File not found'], 404);
             }
 
-            $originalName = $processing->original_filename;
-            $extension = pathinfo($processing->converted_filename, PATHINFO_EXTENSION);
-            $downloadName = pathinfo($originalName, PATHINFO_FILENAME) . '_processed.' . $extension;
+            // Generate proper download filename based on original filename and tool
+            $downloadFilename = $this->generateDownloadFilename($processing);
+            
+            // Clean filename for safe download
+            $safeFilename = str_replace(['"', '\\', '/'], ['_', '_', '_'], $downloadFilename);
 
             Log::info('Video download starting', [
-                'path' => $filePath,
-                'download_name' => $downloadName,
+                'original_filename' => $processing->original_filename,
+                'tool_name' => $processing->tool_name,
+                'converted_filename' => $processing->converted_filename,
+                'download_filename' => $downloadFilename,
                 'file_exists' => file_exists($filePath),
                 'file_size' => file_exists($filePath) ? filesize($filePath) : 0
             ]);
 
-            return response()->download($filePath, $downloadName);
+            return response()->download($filePath, $safeFilename);
 
         } catch (\Exception $e) {
             Log::error('Video download error', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Download failed'], 500);
         }
+    }
+
+    /**
+     * Generate proper download filename for video files
+     */
+    private function generateDownloadFilename($processing)
+    {
+        $originalFilename = $processing->original_filename;
+        $toolName = $processing->tool_name;
+        
+        // Get base filename without extension
+        $baseName = pathinfo($originalFilename, PATHINFO_FILENAME);
+        
+        // Clean filename for safe download
+        $cleanBaseName = $this->cleanFilename($baseName);
+        
+        switch ($toolName) {
+            // Format conversions - keep original name, change extension
+            case 'mp4-to-avi':
+                return $cleanBaseName . '.avi';
+            
+            case 'avi-to-mp4':
+                return $cleanBaseName . '.mp4';
+            
+            case 'mov-to-mp4':
+                return $cleanBaseName . '.mp4';
+            
+            case 'mkv-to-mp4':
+                return $cleanBaseName . '.mp4';
+            
+            case 'wmv-to-mp4':
+                return $cleanBaseName . '.mp4';
+            
+            case 'flv-to-mp4':
+                return $cleanBaseName . '.mp4';
+            
+            case 'webm-to-mp4':
+                return $cleanBaseName . '.mp4';
+            
+            case 'mp4-to-webm':
+                return $cleanBaseName . '.webm';
+            
+            case 'video-to-gif':
+                return $cleanBaseName . '.gif';
+            
+            // Video optimization - add suffix
+            case 'compress-video':
+                return $cleanBaseName . '_compressed.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'optimize-video':
+                return $cleanBaseName . '_optimized.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'reduce-size':
+                return $cleanBaseName . '_reduced.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'change-resolution':
+                return $cleanBaseName . '_resized.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'change-bitrate':
+                return $cleanBaseName . '_bitrate.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'change-framerate':
+                return $cleanBaseName . '_framerate.' . $this->getOriginalExtension($originalFilename);
+            
+            // Video editing - add suffix
+            case 'trim-video':
+                return $cleanBaseName . '_trimmed.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'crop-video':
+                return $cleanBaseName . '_cropped.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'rotate-video':
+                return $cleanBaseName . '_rotated.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'add-watermark':
+                return $cleanBaseName . '_watermarked.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'merge-videos':
+                return 'merged_video.' . $this->getOriginalExtension($originalFilename);
+            
+            // Default fallback
+            default:
+                return $cleanBaseName . '_processed.' . $this->getOriginalExtension($originalFilename);
+        }
+    }
+
+    /**
+     * Get original file extension for video
+     */
+    private function getOriginalExtension($filename)
+    {
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        return $extension ?: 'mp4'; // Default to mp4 if no extension
+    }
+
+    /**
+     * Clean filename for safe storage and download
+     */
+    private function cleanFilename($filename)
+    {
+        // Remove or replace unsafe characters
+        $cleaned = preg_replace('/[^\w\s\-\.\(\)\[\]]/', '', $filename);
+        $cleaned = preg_replace('/\s+/', ' ', $cleaned);
+        $cleaned = trim($cleaned);
+        
+        // Limit length
+        if (strlen($cleaned) > 100) {
+            $cleaned = substr($cleaned, 0, 100);
+        }
+        
+        return $cleaned ?: 'video';
     }
 
 }

@@ -13,6 +13,7 @@ use Dompdf\Dompdf;
 use Dompdf\Options;
 use setasign\Fpdi\Fpdi;
 use setasign\Fpdf\Fpdf;
+use App\Http\Controllers\PDFToolsHelperMethods;
 
 class PDFToolsController extends Controller
 {
@@ -1063,8 +1064,8 @@ class PDFToolsController extends Controller
             $fileContent = Storage::get($filePath);
             $mimeType = Storage::mimeType($filePath);
             
-            // Use friendly filename for download with proper encoding
-            $downloadFilename = $processing->friendly_filename ?? $processing->processed_filename;
+            // Generate proper download filename based on original filename and tool
+            $downloadFilename = $this->generateDownloadFilename($processing);
             
             // Simple approach: use friendly filename directly with proper escaping
             $safeFilename = str_replace(['"', '\\', '/'], ['_', '_', '_'], $downloadFilename);
@@ -1074,6 +1075,8 @@ class PDFToolsController extends Controller
             
             // Debug logging
             Log::info('Download filename debug', [
+                'original_filename' => $processing->original_filename,
+                'tool_name' => $processing->tool_name,
                 'friendly_filename' => $processing->friendly_filename,
                 'processed_filename' => $processing->processed_filename,
                 'download_filename' => $downloadFilename,
@@ -1094,5 +1097,111 @@ class PDFToolsController extends Controller
                 'message' => 'Download failed: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Generate proper download filename based on original filename and conversion tool
+     * 
+     * @param PdfProcessing $processing Processing record
+     * @return string Proper download filename
+     */
+    private function generateDownloadFilename($processing)
+    {
+        $originalFilename = $processing->original_filename;
+        $toolName = $processing->tool_name;
+        
+        // Get base filename without extension
+        $baseName = pathinfo($originalFilename, PATHINFO_FILENAME);
+        
+        // Clean filename for safe download
+        $cleanBaseName = $this->cleanFilename($baseName);
+        
+        switch ($toolName) {
+            // Single file conversions - keep original name, change extension
+            case 'word-to-pdf':
+            case 'excel-to-pdf':
+            case 'ppt-to-pdf':
+            case 'powerpoint-to-pdf':
+            case 'html-to-pdf':
+            case 'image-to-pdf':
+            case 'images-to-pdf':
+            case 'jpg-to-pdf':
+                return $cleanBaseName . '.pdf';
+            
+            case 'pdf-to-word':
+                return $cleanBaseName . '.docx';
+            
+            case 'pdf-to-excel':
+                return $cleanBaseName . '.xlsx';
+            
+            case 'pdf-to-ppt':
+            case 'pdf-to-powerpoint':
+                return $cleanBaseName . '.pptx';
+            
+            case 'pdf-to-jpg':
+            case 'pdf-to-image':
+                return $cleanBaseName . '_images.zip';
+            
+            // Multi-file operations - use descriptive names
+            case 'merge-pdf':
+            case 'merge-pdfs':
+                return 'merged_document.pdf';
+            
+            case 'split-pdf':
+                return $cleanBaseName . '_split.zip';
+            
+            // Modification operations - add suffix
+            case 'compress-pdf':
+                return $cleanBaseName . '_compressed.pdf';
+            
+            case 'rotate-pdf':
+                return $cleanBaseName . '_rotated.pdf';
+            
+            case 'add-watermark':
+                return $cleanBaseName . '_watermarked.pdf';
+            
+            case 'add-page-numbers':
+                return $cleanBaseName . '_numbered.pdf';
+            
+            case 'repair-pdf':
+                return $cleanBaseName . '_repaired.pdf';
+            
+            case 'ocr-pdf':
+                return $cleanBaseName . '_ocr.pdf';
+            
+            case 'organize-pdf':
+                return $cleanBaseName . '_organized.pdf';
+            
+            case 'crop-pdf':
+                return $cleanBaseName . '_cropped.pdf';
+            
+            case 'edit-pdf':
+                return $cleanBaseName . '_edited.pdf';
+            
+            // Default fallback
+            default:
+                return $cleanBaseName . '_converted.pdf';
+        }
+    }
+    
+    /**
+     * Clean filename for safe storage and download
+     * 
+     * @param string $filename Original filename
+     * @return string Cleaned filename
+     */
+    private function cleanFilename($filename)
+    {
+        // Remove or replace unsafe characters
+        $cleaned = preg_replace('/[^\w\s\-\.\(\)\[\]]/', '', $filename);
+        $cleaned = preg_replace('/\s+/', ' ', $cleaned);
+        $cleaned = trim($cleaned);
+        
+        // Limit length
+        if (strlen($cleaned) > 100) {
+            $cleaned = substr($cleaned, 0, 100);
+        }
+        
+        return $cleaned ?: 'converted_file';
     }
 }

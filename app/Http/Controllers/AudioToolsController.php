@@ -613,40 +613,33 @@ class AudioToolsController extends Controller
                 return response()->json(['error' => 'File not found'], 404);
             }
 
-            $originalName = $processing->original_filename;
-            $extension = pathinfo($processing->converted_filename, PATHINFO_EXTENSION);
+            $downloadFilename = $this->generateDownloadFilename($processing);
             
-            // Remove any audio extension from original filename to avoid confusion
-            $baseName = pathinfo($originalName, PATHINFO_FILENAME);
-            $baseName = preg_replace('/\.(mp3|wav|flac|aac|ogg|m4a)$/i', '', $baseName);
+            // Clean filename for safe download
+            $safeFilename = str_replace(['"', '\\', '/'], ['_', '_', '_'], $downloadFilename);
             
-            $downloadName = $baseName . '_processed.' . $extension;
-
             Log::info('Audio download starting', [
-                'path' => $filePath,
-                'download_name' => $downloadName,
-                'original_name' => $originalName,
-                'base_name' => $baseName,
-                'extension' => $extension,
-                'file_exists' => file_exists($filePath),
-                'file_size' => file_exists($filePath) ? filesize($filePath) : 0
+                'original_filename' => $processing->original_filename,
+                'tool_name' => $processing->tool_name,
+                'converted_filename' => $processing->converted_filename,
+                'download_filename' => $downloadFilename
             ]);
 
-            // Force proper MIME type based on actual file extension
             $mimeTypes = [
-                'wav' => 'audio/wav',
-                'aac' => 'audio/aac',
-                'flac' => 'audio/flac',
                 'mp3' => 'audio/mpeg',
+                'wav' => 'audio/wav',
+                'flac' => 'audio/flac',
+                'aac' => 'audio/aac',
                 'ogg' => 'audio/ogg',
                 'm4a' => 'audio/mp4'
             ];
             
+            $extension = strtolower(pathinfo($downloadFilename, PATHINFO_EXTENSION));
             $contentType = $mimeTypes[$extension] ?? 'application/octet-stream';
             
-            return response()->download($filePath, $downloadName, [
+            return response()->download($filePath, $safeFilename, [
                 'Content-Type' => $contentType,
-                'Content-Disposition' => 'attachment; filename="' . $downloadName . '"',
+                'Content-Disposition' => 'attachment; filename="' . $safeFilename . '"',
                 'Cache-Control' => 'no-cache, no-store, must-revalidate',
                 'Pragma' => 'no-cache',
                 'Expires' => '0'
@@ -656,5 +649,103 @@ class AudioToolsController extends Controller
             Log::error('Audio download error', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Download failed'], 500);
         }
+    }
+
+    /**
+     * Generate proper download filename for audio files
+     */
+    private function generateDownloadFilename($processing)
+    {
+        $originalFilename = $processing->original_filename;
+        $toolName = $processing->tool_name;
+        
+        // Get base filename without extension
+        $baseName = pathinfo($originalFilename, PATHINFO_FILENAME);
+        
+        // Clean filename for safe download
+        $cleanBaseName = $this->cleanFilename($baseName);
+        
+        switch ($toolName) {
+            // Format conversions - keep original name, change extension
+            case 'mp3-to-wav':
+                return $cleanBaseName . '.wav';
+            
+            case 'wav-to-mp3':
+                return $cleanBaseName . '.mp3';
+            
+            case 'flac-to-mp3':
+                return $cleanBaseName . '.mp3';
+            
+            case 'mp3-to-flac':
+                return $cleanBaseName . '.flac';
+            
+            case 'aac-to-mp3':
+                return $cleanBaseName . '.mp3';
+            
+            case 'ogg-to-mp3':
+                return $cleanBaseName . '.mp3';
+            
+            case 'm4a-to-mp3':
+                return $cleanBaseName . '.mp3';
+            
+            case 'wav-to-flac':
+                return $cleanBaseName . '.flac';
+            
+            case 'flac-to-wav':
+                return $cleanBaseName . '.wav';
+            
+            // Audio enhancement - add suffix
+            case 'compress-audio':
+                return $cleanBaseName . '_compressed.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'noise-reduction':
+                return $cleanBaseName . '_cleaned.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'normalize-audio':
+                return $cleanBaseName . '_normalized.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'enhance-audio':
+                return $cleanBaseName . '_enhanced.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'audio-equalizer':
+                return $cleanBaseName . '_equalized.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'change-bitrate':
+                return $cleanBaseName . '_bitrate.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'change-sample-rate':
+                return $cleanBaseName . '_resampled.' . $this->getOriginalExtension($originalFilename);
+            
+            // Default fallback
+            default:
+                return $cleanBaseName . '_processed.' . $this->getOriginalExtension($originalFilename);
+        }
+    }
+
+    /**
+     * Get original file extension for audio
+     */
+    private function getOriginalExtension($filename)
+    {
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        return $extension ?: 'mp3'; // Default to mp3 if no extension
+    }
+
+    /**
+     * Clean filename for safe storage and download
+     */
+    private function cleanFilename($filename)
+    {
+        // Remove or replace unsafe characters
+        $cleaned = preg_replace('/[^\w\s\-\.\(\)\[\]]/', '', $filename);
+        $cleaned = preg_replace('/\s+/', ' ', $cleaned);
+        $cleaned = trim($cleaned);
+        
+        // Limit length
+        if (strlen($cleaned) > 100) {
+            $cleaned = substr($cleaned, 0, 100);
+        }
+        
+        return $cleaned ?: 'audio';
     }
 }

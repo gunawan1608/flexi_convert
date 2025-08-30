@@ -904,11 +904,25 @@ class ImageToolsController extends Controller
             $fileContent = Storage::get($filePath);
             $mimeType = Storage::mimeType($filePath);
             
-            Log::info("Download successful", ['file' => $processing->processed_filename]);
+            // Generate proper download filename based on original filename and tool
+            $downloadFilename = $this->generateDownloadFilename($processing);
+            
+            // Clean filename for safe download
+            $safeFilename = str_replace(['"', '\\', '/'], ['_', '_', '_'], $downloadFilename);
+            
+            // For Content-Disposition, use RFC 5987 encoding
+            $encodedFilename = "UTF-8''" . rawurlencode($downloadFilename);
+            
+            Log::info("Download successful", [
+                'original_filename' => $processing->original_filename,
+                'tool_name' => $processing->tool_name,
+                'processed_filename' => $processing->processed_filename,
+                'download_filename' => $downloadFilename
+            ]);
             
             return response($fileContent)
                 ->header('Content-Type', $mimeType)
-                ->header('Content-Disposition', 'attachment; filename="' . $processing->processed_filename . '"');
+                ->header('Content-Disposition', 'attachment; filename="' . $safeFilename . '"; filename*=' . $encodedFilename);
 
         } catch (\Exception $e) {
             Log::error("Download failed: " . $e->getMessage(), [
@@ -920,5 +934,136 @@ class ImageToolsController extends Controller
                 'message' => 'Download gagal: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Generate proper download filename based on original filename and conversion tool
+     */
+    private function generateDownloadFilename($processing)
+    {
+        $originalFilename = $processing->original_filename;
+        $toolName = $processing->tool_name;
+        
+        // Get base filename without extension
+        $baseName = pathinfo($originalFilename, PATHINFO_FILENAME);
+        
+        // Clean filename for safe download
+        $cleanBaseName = $this->cleanFilename($baseName);
+        
+        switch ($toolName) {
+            // Format conversions - keep original name, change extension
+            case 'jpg-to-png':
+            case 'jpeg-to-png':
+                return $cleanBaseName . '.png';
+            
+            case 'png-to-jpg':
+            case 'png-to-jpeg':
+                return $cleanBaseName . '.jpg';
+            
+            case 'webp-to-jpg':
+            case 'webp-to-jpeg':
+                return $cleanBaseName . '.jpg';
+            
+            case 'webp-to-png':
+                return $cleanBaseName . '.png';
+            
+            case 'jpg-to-webp':
+            case 'jpeg-to-webp':
+            case 'png-to-webp':
+                return $cleanBaseName . '.webp';
+            
+            case 'gif-to-jpg':
+            case 'gif-to-jpeg':
+                return $cleanBaseName . '.jpg';
+            
+            case 'gif-to-png':
+                return $cleanBaseName . '.png';
+            
+            case 'bmp-to-jpg':
+            case 'bmp-to-jpeg':
+                return $cleanBaseName . '.jpg';
+            
+            case 'bmp-to-png':
+                return $cleanBaseName . '.png';
+            
+            // Size modifications - add suffix
+            case 'resize-image':
+            case 'resize-custom':
+                return $cleanBaseName . '_resized.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'resize-percentage':
+                return $cleanBaseName . '_scaled.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'resize-preset':
+                return $cleanBaseName . '_preset.' . $this->getOriginalExtension($originalFilename);
+            
+            // Crop operations - add suffix
+            case 'crop-square':
+                return $cleanBaseName . '_square.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'crop-rectangle':
+                return $cleanBaseName . '_cropped.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'crop-circle':
+                return $cleanBaseName . '_circle.png'; // Always PNG for transparency
+            
+            case 'crop-custom':
+                return $cleanBaseName . '_custom_crop.' . $this->getOriginalExtension($originalFilename);
+            
+            // Optimization - add suffix
+            case 'compress-lossy':
+            case 'compress-lossless':
+                return $cleanBaseName . '_compressed.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'reduce-colors':
+                return $cleanBaseName . '_optimized.' . $this->getOriginalExtension($originalFilename);
+            
+            // Effects - add suffix
+            case 'rotate-image':
+                return $cleanBaseName . '_rotated.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'flip-horizontal':
+                return $cleanBaseName . '_flipped_h.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'flip-vertical':
+                return $cleanBaseName . '_flipped_v.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'grayscale':
+                return $cleanBaseName . '_grayscale.' . $this->getOriginalExtension($originalFilename);
+            
+            case 'sepia':
+                return $cleanBaseName . '_sepia.' . $this->getOriginalExtension($originalFilename);
+            
+            // Default fallback
+            default:
+                return $cleanBaseName . '_processed.' . $this->getOriginalExtension($originalFilename);
+        }
+    }
+    
+    /**
+     * Get original file extension
+     */
+    private function getOriginalExtension($filename)
+    {
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        return $extension ?: 'jpg'; // Default to jpg if no extension
+    }
+    
+    /**
+     * Clean filename for safe storage and download
+     */
+    private function cleanFilename($filename)
+    {
+        // Remove or replace unsafe characters
+        $cleaned = preg_replace('/[^\w\s\-\.\(\)\[\]]/', '', $filename);
+        $cleaned = preg_replace('/\s+/', ' ', $cleaned);
+        $cleaned = trim($cleaned);
+        
+        // Limit length
+        if (strlen($cleaned) > 100) {
+            $cleaned = substr($cleaned, 0, 100);
+        }
+        
+        return $cleaned ?: 'image';
     }
 }
