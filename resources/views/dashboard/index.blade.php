@@ -29,15 +29,15 @@
             @endif
 
             <!-- Hero Header -->
-            <div class="text-center space-y-6">
-                <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl shadow-lg transform rotate-3 hover:rotate-0 transition-transform duration-300">
-                    <span class="text-3xl">🚀</span>
+            <div class="text-center space-y-4 lg:space-y-6">
+                <div class="inline-flex items-center justify-center w-16 h-16 lg:w-20 lg:h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl lg:rounded-3xl shadow-lg transform rotate-3 hover:rotate-0 transition-transform duration-300">
+                    <span class="text-2xl lg:text-3xl">🚀</span>
                 </div>
                 <div>
-                    <h1 class="text-4xl lg:text-6xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-indigo-900 bg-clip-text text-transparent mb-4">
+                    <h1 class="text-2xl sm:text-3xl lg:text-6xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-indigo-900 bg-clip-text text-transparent mb-2 lg:mb-4 px-4">
                         Welcome back, {{ auth()->user()->name }}!
                     </h1>
-                    <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                    <p class="text-sm sm:text-base lg:text-xl text-gray-600 max-w-2xl mx-auto px-4">
                         Transform your files with professional-grade conversion tools. 
                         Fast, secure, and high-quality results every time.
                     </p>
@@ -45,55 +45,55 @@
             </div>
 
             <!-- Statistics Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
                 <!-- Individual Type Statistics -->
-                <div class="col-span-full mb-6">
-                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Conversion Statistics by Type</h3>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="col-span-full mb-4 lg:mb-6">
+                    <h3 class="text-base lg:text-lg font-semibold text-gray-900 mb-3 lg:mb-4 px-2">Conversion Statistics by Type</h3>
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
                         <!-- Documents -->
-                        <div class="bg-white/60 backdrop-blur-sm rounded-xl p-4 text-center border border-white/20">
-                            <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl mx-auto mb-2 flex items-center justify-center">
-                                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="bg-white/60 backdrop-blur-sm rounded-xl p-3 lg:p-4 text-center border border-white/20">
+                            <div class="w-8 h-8 lg:w-10 lg:h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg lg:rounded-xl mx-auto mb-2 flex items-center justify-center">
+                                <svg class="w-4 h-4 lg:w-5 lg:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                                 </svg>
                             </div>
-                            <p class="text-2xl font-bold text-blue-600">{{ number_format($stats['pdf_processings']) }}</p>
+                            <p class="text-lg lg:text-2xl font-bold text-blue-600">{{ number_format($stats['pdf_processings']) }}</p>
                             <p class="text-xs text-gray-600">Documents</p>
                             <p class="text-xs text-green-600">+{{ $stats['pdf_today'] }} today</p>
                         </div>
                         
                         <!-- Images -->
-                        <div class="bg-white/60 backdrop-blur-sm rounded-xl p-4 text-center border border-white/20">
-                            <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl mx-auto mb-2 flex items-center justify-center">
-                                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="bg-white/60 backdrop-blur-sm rounded-xl p-3 lg:p-4 text-center border border-white/20">
+                            <div class="w-8 h-8 lg:w-10 lg:h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg lg:rounded-xl mx-auto mb-2 flex items-center justify-center">
+                                <svg class="w-4 h-4 lg:w-5 lg:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                                 </svg>
                             </div>
-                            <p class="text-2xl font-bold text-purple-600">{{ number_format($stats['image_processings']) }}</p>
+                            <p class="text-lg lg:text-2xl font-bold text-purple-600">{{ number_format($stats['image_processings']) }}</p>
                             <p class="text-xs text-gray-600">Images</p>
                             <p class="text-xs text-green-600">+{{ $stats['image_today'] }} today</p>
                         </div>
                         
                         <!-- Videos -->
-                        <div class="bg-white/60 backdrop-blur-sm rounded-xl p-4 text-center border border-white/20">
-                            <div class="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-xl mx-auto mb-2 flex items-center justify-center">
-                                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="bg-white/60 backdrop-blur-sm rounded-xl p-3 lg:p-4 text-center border border-white/20">
+                            <div class="w-8 h-8 lg:w-10 lg:h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-lg lg:rounded-xl mx-auto mb-2 flex items-center justify-center">
+                                <svg class="w-4 h-4 lg:w-5 lg:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
                                 </svg>
                             </div>
-                            <p class="text-2xl font-bold text-red-600">{{ number_format($stats['video_processings']) }}</p>
+                            <p class="text-lg lg:text-2xl font-bold text-red-600">{{ number_format($stats['video_processings']) }}</p>
                             <p class="text-xs text-gray-600">Videos</p>
                             <p class="text-xs text-green-600">+{{ $stats['video_today'] }} today</p>
                         </div>
                         
                         <!-- Audio -->
-                        <div class="bg-white/60 backdrop-blur-sm rounded-xl p-4 text-center border border-white/20">
-                            <div class="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-xl mx-auto mb-2 flex items-center justify-center">
-                                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="bg-white/60 backdrop-blur-sm rounded-xl p-3 lg:p-4 text-center border border-white/20">
+                            <div class="w-8 h-8 lg:w-10 lg:h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-lg lg:rounded-xl mx-auto mb-2 flex items-center justify-center">
+                                <svg class="w-4 h-4 lg:w-5 lg:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path>
                                 </svg>
                             </div>
-                            <p class="text-2xl font-bold text-green-600">{{ number_format($stats['audio_processings']) }}</p>
+                            <p class="text-lg lg:text-2xl font-bold text-green-600">{{ number_format($stats['audio_processings']) }}</p>
                             <p class="text-xs text-gray-600">Audio</p>
                             <p class="text-xs text-green-600">+{{ $stats['audio_today'] }} today</p>
                         </div>
@@ -163,14 +163,14 @@
 
             <!-- Recent Activity -->
             <div class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20">
-                <div class="px-8 py-6 border-b border-gray-100">
+                <div class="px-4 lg:px-8 py-4 lg:py-6 border-b border-gray-100">
                     <div class="flex items-center justify-between">
-                        <h2 class="text-2xl font-bold text-gray-900">Recent Activity</h2>
-                        <a href="{{ route('history') }}" class="text-blue-600 hover:text-blue-800 text-sm font-medium px-4 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors duration-200">View All</a>
+                        <h2 class="text-lg lg:text-2xl font-bold text-gray-900">Recent Activity</h2>
+                        <a href="{{ route('history') }}" class="text-blue-600 hover:text-blue-800 text-xs lg:text-sm font-medium px-3 lg:px-4 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors duration-200">View All</a>
                     </div>
                 </div>
             
-                <div class="p-8">
+                <div class="p-4 lg:p-8">
                     @if($stats['recent_conversions']->count() > 0)
                         <div class="space-y-4">
                             @foreach($stats['recent_conversions'] as $conversion)
@@ -218,36 +218,36 @@
                                         $targetExt = $originalExt;
                                     }
                                 @endphp
-                                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors duration-200">
-                                    <div class="flex items-center space-x-4">
-                                        <div class="w-12 h-12 {{ $iconBg }} rounded-xl flex items-center justify-center">
+                                <div class="flex flex-col lg:flex-row lg:items-center justify-between p-3 lg:p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors duration-200 space-y-3 lg:space-y-0">
+                                    <div class="flex items-center space-x-3 lg:space-x-4 min-w-0 flex-1">
+                                        <div class="w-10 h-10 lg:w-12 lg:h-12 {{ $iconBg }} rounded-xl flex items-center justify-center flex-shrink-0">
                                             {!! $iconSvg !!}
                                         </div>
-                                        <div>
-                                            <h4 class="font-medium text-gray-900">{{ $conversion->original_filename }}</h4>
-                                            <div class="flex items-center space-x-2 mt-1">
+                                        <div class="min-w-0 flex-1">
+                                            <h4 class="font-medium text-gray-900 text-sm lg:text-base truncate">{{ $conversion->original_filename }}</h4>
+                                            <div class="flex flex-wrap items-center gap-1 lg:gap-2 mt-1">
                                                 @if($targetExt && $targetExt !== $originalExt)
-                                                    <span class="text-xs text-gray-500">{{ $displayType }} Conversion:</span>
+                                                    <span class="text-xs text-gray-500 hidden lg:inline">{{ $displayType }} Conversion:</span>
                                                     <span class="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-gray-200 text-gray-700">
                                                         {{ strtoupper($originalExt) }}
                                                     </span>
-                                                    <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <svg class="w-3 h-3 lg:w-4 lg:h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                                                     </svg>
                                                     <span class="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-blue-100 text-blue-700">
                                                         {{ strtoupper($targetExt) }}
                                                     </span>
                                                 @else
-                                                    <span class="text-xs text-gray-500">{{ $displayType }} Processing:</span>
+                                                    <span class="text-xs text-gray-500 hidden lg:inline">{{ $displayType }} Processing:</span>
                                                     <span class="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-blue-100 text-blue-700">
                                                         {{ ucfirst(str_replace('-', ' ', $conversion->tool_name)) }}
                                                     </span>
                                                 @endif
-                                                <span class="text-xs text-gray-500">{{ $conversion->file_size_human ?? 'N/A' }}</span>
+                                                <span class="text-xs text-gray-500 hidden sm:inline">{{ $conversion->file_size_human ?? 'N/A' }}</span>
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="flex items-center space-x-3">
+                                    <div class="flex flex-row items-center space-x-2 lg:space-x-3 flex-shrink-0">
                                         @php
                                             $statusConfig = [
                                                 'completed' => ['bg-green-100 text-green-800', '✓'],
@@ -257,45 +257,45 @@
                                             ];
                                             $config = $statusConfig[$conversion->status] ?? $statusConfig['pending'];
                                         @endphp
-                                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium {{ $config[0] }}">
-                                            {{ $config[1] }} {{ ucfirst($conversion->status) }}
+                                        <span class="inline-flex items-center px-2 lg:px-3 py-1 rounded-full text-xs font-medium {{ $config[0] }}">
+                                            {{ $config[1] }} <span class="hidden sm:inline ml-1">{{ ucfirst($conversion->status) }}</span>
                                         </span>
                                         @if($conversion->status === 'completed')
                                             @switch($conversionType)
                                                 @case('image')
                                                     <a href="{{ route('image-tools.download', $conversion->id) }}" 
-                                                       class="inline-flex items-center px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg transition-colors duration-200">
-                                                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                       class="inline-flex items-center px-2 lg:px-3 py-1 lg:py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg transition-colors duration-200">
+                                                        <svg class="w-3 h-3 lg:w-4 lg:h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3"></path>
                                                         </svg>
-                                                        Download
+                                                        <span class="inline">Download</span>
                                                     </a>
                                                     @break
                                                 @case('video')
                                                     <a href="{{ route('video-tools.download', $conversion->id) }}" 
-                                                       class="inline-flex items-center px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors duration-200">
-                                                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                       class="inline-flex items-center px-2 lg:px-3 py-1 lg:py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors duration-200">
+                                                        <svg class="w-3 h-3 lg:w-4 lg:h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3"></path>
                                                         </svg>
-                                                        Download
+                                                        <span class="inline">Download</span>
                                                     </a>
                                                     @break
                                                 @case('audio')
                                                     <a href="{{ route('audio-tools.download', $conversion->id) }}" 
-                                                       class="inline-flex items-center px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors duration-200">
-                                                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                       class="inline-flex items-center px-2 lg:px-3 py-1 lg:py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors duration-200">
+                                                        <svg class="w-3 h-3 lg:w-4 lg:h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3"></path>
                                                         </svg>
-                                                        Download
+                                                        <span class="inline">Download</span>
                                                     </a>
                                                     @break
                                                 @default
                                                     <a href="{{ route('pdf-tools.download', $conversion->id) }}" 
-                                                       class="inline-flex items-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors duration-200">
-                                                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                       class="inline-flex items-center px-2 lg:px-3 py-1 lg:py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors duration-200">
+                                                        <svg class="w-3 h-3 lg:w-4 lg:h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3"></path>
                                                         </svg>
-                                                        Download
+                                                        <span class="inline">Download</span>
                                                     </a>
                                             @endswitch
                                         @endif
@@ -312,7 +312,7 @@
                             </div>
                             <h3 class="text-xl font-semibold text-gray-900 mb-2">No conversions yet</h3>
                             <p class="text-gray-600 mb-8">Start your first conversion to see your activity here</p>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4 max-w-4xl mx-auto">
                                 <a href="{{ route('tools.documents') }}" class="inline-flex flex-col items-center px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-medium rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200">
                                     <svg class="w-6 h-6 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>

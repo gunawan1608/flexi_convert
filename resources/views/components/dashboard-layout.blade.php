@@ -1,7 +1,19 @@
 <x-layout>
     <div class="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-zinc-50">
+        <!-- Mobile Menu Button -->
+        <div class="lg:hidden fixed top-4 left-4 z-50">
+            <button id="mobile-menu-button" class="bg-white p-3 rounded-xl shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Mobile Overlay -->
+        <div id="mobile-overlay" class="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40 hidden"></div>
+
         <!-- Sidebar -->
-        <div class="fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-xl transform transition-transform duration-300 ease-in-out border-r border-gray-100">
+        <div id="sidebar" class="fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-xl transform -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out border-r border-gray-100">
             <div class="flex flex-col h-full">
                 <!-- Logo -->
                 <div class="flex items-center justify-center h-20 px-6 bg-gradient-to-r from-blue-600 to-blue-700">
@@ -123,10 +135,34 @@
         </div>
 
         <!-- Main content -->
-        <div class="ml-72">
-            <main class="p-8">
+        <div class="lg:ml-72">
+            <main class="p-4 lg:p-8 pt-20 lg:pt-8">
                 {{ $slot }}
             </main>
         </div>
     </div>
+
+    <!-- Mobile Menu JavaScript -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('mobile-overlay');
+            
+            function toggleMobileMenu() {
+                sidebar.classList.toggle('-translate-x-full');
+                overlay.classList.toggle('hidden');
+            }
+            
+            mobileMenuButton?.addEventListener('click', toggleMobileMenu);
+            overlay?.addEventListener('click', toggleMobileMenu);
+            
+            // Close on escape key
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && !sidebar.classList.contains('-translate-x-full')) {
+                    toggleMobileMenu();
+                }
+            });
+        });
+    </script>
 </x-layout>
