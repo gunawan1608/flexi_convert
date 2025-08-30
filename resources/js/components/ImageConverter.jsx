@@ -334,54 +334,56 @@ const ImageConverter = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4 lg:p-8">
-            <div className="max-w-7xl mx-auto">
-                {/* Header */}
-                <div className="text-center mb-8 lg:mb-12">
-                    <div className="inline-flex items-center justify-center w-16 h-16 lg:w-20 lg:h-20 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl lg:rounded-3xl shadow-lg mb-4 lg:mb-6 transform hover:scale-105 transition-transform duration-300">
-                        <span className="text-2xl lg:text-3xl">🖼️</span>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-pink-50">
+            <div className="container mx-auto px-4 py-8 space-y-8">
+                {/* Enhanced Header */}
+                <div className="text-center space-y-6">
+                    <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-600 rounded-3xl shadow-lg transform rotate-3 hover:rotate-0 transition-transform duration-300">
+                        <span className="text-3xl">🖼️</span>
                     </div>
-                    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-gray-900 via-purple-900 to-pink-900 bg-clip-text text-transparent mb-3 lg:mb-4 px-4">
-                        Image Converter
-                    </h1>
-                    <p className="text-sm sm:text-base lg:text-xl text-gray-600 max-w-2xl mx-auto px-4">
-                        Transform your images with professional-grade conversion tools. 
-                        Resize, convert formats, and enhance your images with ease.
-                    </p>
-                </div>
-
-                {/* Stats */}
-                <div className="grid grid-cols-3 gap-4 lg:gap-6 mb-8 lg:mb-12">
-                    <div className="bg-white/70 backdrop-blur-sm rounded-xl lg:rounded-2xl px-4 lg:px-6 py-3 lg:py-4 shadow-lg text-center">
-                        <div className="text-lg lg:text-2xl font-bold text-blue-600">{selectedFiles.length}</div>
-                        <div className="text-xs lg:text-sm text-gray-600">Files Selected</div>
+                    <div>
+                        <h1 className="text-4xl lg:text-6xl font-bold bg-gradient-to-r from-gray-900 via-purple-900 to-pink-900 bg-clip-text text-transparent mb-4">
+                            Image Converter
+                        </h1>
+                        <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                            Transform your images with professional-grade conversion tools. 
+                            Convert between JPG, PNG, WebP, GIF and more formats.
+                        </p>
                     </div>
-                    <div className="bg-white/70 backdrop-blur-sm rounded-xl lg:rounded-2xl px-4 lg:px-6 py-3 lg:py-4 shadow-lg text-center">
-                        <div className="text-lg lg:text-2xl font-bold text-green-600">{results.filter(r => r.status === 'completed').length}</div>
-                        <div className="text-xs lg:text-sm text-gray-600">Completed</div>
-                    </div>
-                    <div className="bg-white/70 backdrop-blur-sm rounded-xl lg:rounded-2xl px-4 lg:px-6 py-3 lg:py-4 shadow-lg text-center">
-                        <div className="text-lg lg:text-2xl font-bold text-purple-600">∞</div>
-                        <div className="text-xs lg:text-sm text-gray-600">Free Usage</div>
+                    
+                    {/* Stats */}
+                    <div className="flex justify-center space-x-8 text-center">
+                        <div className="bg-white/70 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg">
+                            <div className="text-2xl font-bold text-purple-600">{selectedFiles.length}</div>
+                            <div className="text-sm text-gray-600">Files Selected</div>
+                        </div>
+                        <div className="bg-white/70 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg">
+                            <div className="text-2xl font-bold text-green-600">{results.filter(r => r.status === 'completed').length}</div>
+                            <div className="text-sm text-gray-600">Completed</div>
+                        </div>
+                        <div className="bg-white/70 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg">
+                            <div className="text-2xl font-bold text-pink-600">∞</div>
+                            <div className="text-sm text-gray-600">Free Usage</div>
+                        </div>
                     </div>
                 </div>
 
                 {/* Category Navigation */}
-                <div className="flex justify-center mb-8 lg:mb-12">
+                <div className="flex justify-center">
                     <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2 shadow-lg border border-white/20">
-                        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                        <div className="flex space-x-2">
                             {toolCategories.map((category) => (
                                 <button
                                     key={category.id}
                                     onClick={() => setActiveCategory(category.id)}
-                                    className={`px-4 lg:px-6 py-2 lg:py-3 rounded-xl font-semibold transition-all duration-300 text-sm lg:text-base ${
+                                    className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
                                         activeCategory === category.id
                                             ? `bg-gradient-to-r ${category.gradient} text-white shadow-lg transform scale-105`
                                             : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
                                     }`}
                                 >
                                     <span className="mr-2">{category.icon}</span>
-                                    <span className="hidden sm:inline">{category.title}</span>
+                                    {category.title}
                                 </button>
                             ))}
                         </div>
@@ -397,7 +399,7 @@ const ImageConverter = () => {
                                 <p className="text-gray-600">{category.description}</p>
                             </div>
                             
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 lg:gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
                                 {category.tools.map((tool, index) => (
                                     <div
                                         key={tool.id}
@@ -417,24 +419,24 @@ const ImageConverter = () => {
                                                 <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white to-transparent transform rotate-45"></div>
                                             </div>
                                             
-                                            <div className="relative p-4 lg:p-6 text-center space-y-3 lg:space-y-4">
-                                                <div className={`inline-flex items-center justify-center w-12 h-12 lg:w-16 lg:h-16 rounded-xl lg:rounded-2xl ${
+                                            <div className="relative p-6 text-center space-y-4">
+                                                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl ${
                                                     selectedTool?.id === tool.id 
                                                         ? 'bg-white/20' 
                                                         : `bg-gradient-to-br ${tool.color}`
                                                 } shadow-lg`}>
-                                                    <span className="text-xl lg:text-2xl text-white">
+                                                    <span className="text-2xl text-white">
                                                         {tool.icon}
                                                     </span>
                                                 </div>
                                                 
                                                 <div>
-                                                    <h3 className={`font-bold text-base lg:text-lg ${
+                                                    <h3 className={`font-bold text-lg ${
                                                         selectedTool?.id === tool.id ? 'text-white' : 'text-gray-900'
                                                     }`}>
                                                         {tool.name}
                                                     </h3>
-                                                    <p className={`text-xs lg:text-sm ${
+                                                    <p className={`text-sm ${
                                                         selectedTool?.id === tool.id ? 'text-white/80' : 'text-gray-600'
                                                     }`}>
                                                         {tool.description}
@@ -468,7 +470,7 @@ const ImageConverter = () => {
                 {/* File Upload Section */}
                 {selectedTool && (
                     <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/20 overflow-hidden">
-                        <div className="p-4 lg:p-8 space-y-4 lg:space-y-6">
+                        <div className="p-8 space-y-6">
                             <div className="text-center">
                                 <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${selectedTool.color} shadow-lg mb-4`}>
                                     <span className="text-2xl text-white">{selectedTool.icon}</span>
@@ -479,7 +481,7 @@ const ImageConverter = () => {
                             
                             <div
                                 {...getRootProps()}
-                                className={`relative border-2 border-dashed rounded-3xl p-6 lg:p-12 text-center transition-all duration-300 cursor-pointer ${
+                                className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-all duration-300 cursor-pointer ${
                                     isDragActive 
                                         ? 'border-blue-400 bg-blue-50/50 scale-105'
                                         : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50/30'

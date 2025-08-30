@@ -81,7 +81,7 @@ const App = () => {
                         <p className="text-xl text-gray-600 animate-slide-up">Choose from our most used conversion tools</p>
                     </div>
                     
-                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8 mb-16">
                         {toolsData.map((tool, index) => (
                             <div key={tool.category} className="animate-slide-up" style={{ animationDelay: `${index * 0.1}s` }}>
                                 <ToolCard {...tool} />

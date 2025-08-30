@@ -13,9 +13,22 @@ const Header = () => {
         audio: false,
         video: false
     });
+    const [mobileDropdownStates, setMobileDropdownStates] = useState({
+        documents: false,
+        images: false,
+        audio: false,
+        video: false
+    });
 
     const toggleDropdown = (category) => {
         setDropdownStates(prev => ({
+            ...prev,
+            [category]: !prev[category]
+        }));
+    };
+
+    const toggleMobileDropdown = (category) => {
+        setMobileDropdownStates(prev => ({
             ...prev,
             [category]: !prev[category]
         }));
@@ -109,6 +122,45 @@ const Header = () => {
                                     <a 
                                         href="/register" 
                                         className={`flex items-center text-sm text-gray-700 ${colorClasses.hover} transition-colors duration-200 p-2 rounded-md ${colorClasses.hoverBg}`}
+                                    >
+                                        <div className={`w-2 h-2 rounded-full ${colorClasses.dot} mr-3`}></div>
+                                        {item}
+                                    </a>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // Mobile Dropdown Component
+    const MobileDropdownMenu = ({ category, isOpen, onToggle, color, items }) => {
+        const colorClasses = getColorClasses(color);
+        
+        return (
+            <div className="border-b border-gray-100">
+                <button 
+                    className={`w-full text-left px-3 py-3 text-base font-medium text-gray-700 ${colorClasses.hover} flex items-center justify-between transition-colors duration-200`}
+                    onClick={() => onToggle(category)}
+                >
+                    {category.charAt(0).toUpperCase() + category.slice(1)} Tools
+                    <svg className={`h-5 w-5 transform transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`} 
+                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </button>
+                <div className={`overflow-hidden transition-all duration-300 ${
+                    isOpen ? 'max-h-96' : 'max-h-0'
+                }`}>
+                    <div className="px-6 pb-3">
+                        <ul className="space-y-1">
+                            {items.map((item, index) => (
+                                <li key={index}>
+                                    <a 
+                                        href="/register" 
+                                        className={`flex items-center text-sm text-gray-600 ${colorClasses.hover} transition-colors duration-200 p-2 rounded-md ${colorClasses.hoverBg}`}
                                     >
                                         <div className={`w-2 h-2 rounded-full ${colorClasses.dot} mr-3`}></div>
                                         {item}
@@ -226,27 +278,62 @@ const Header = () => {
                     </div>
                 </div>
 
-                {/* Mobile Navigation */}
+                {/* Mobile Navigation - UPDATED */}
                 <div className={`md:hidden transition-all duration-300 ease-in-out ${
                     mobileMenuOpen 
-                        ? 'max-h-96 opacity-100' 
+                        ? 'max-h-screen opacity-100' 
                         : 'max-h-0 opacity-0 overflow-hidden'
                 }`}>
-                    <div className="px-2 pt-2 pb-3 space-y-1 bg-white border-t border-gray-200">
-                        {isAuthenticated() ? (
-                            <a href="/dashboard" className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium transition-colors duration-200">
-                                Dashboard
-                            </a>
-                        ) : (
-                            <>
-                                <a href="/login" className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium transition-colors duration-200">
-                                    Login
+                    <div className="px-2 pt-2 pb-3 bg-white border-t border-gray-200">
+                        {/* Mobile Tools Navigation */}
+                        <div className="space-y-1 mb-4">
+                            <MobileDropdownMenu 
+                                category="documents" 
+                                isOpen={mobileDropdownStates.documents}
+                                onToggle={toggleMobileDropdown}
+                                color="blue"
+                                items={menuItems.documents}
+                            />
+                            <MobileDropdownMenu 
+                                category="images" 
+                                isOpen={mobileDropdownStates.images}
+                                onToggle={toggleMobileDropdown}
+                                color="green"
+                                items={menuItems.images}
+                            />
+                            <MobileDropdownMenu 
+                                category="audio" 
+                                isOpen={mobileDropdownStates.audio}
+                                onToggle={toggleMobileDropdown}
+                                color="purple"
+                                items={menuItems.audio}
+                            />
+                            <MobileDropdownMenu 
+                                category="video" 
+                                isOpen={mobileDropdownStates.video}
+                                onToggle={toggleMobileDropdown}
+                                color="red"
+                                items={menuItems.video}
+                            />
+                        </div>
+
+                        {/* Mobile Auth Links */}
+                        <div className="border-t border-gray-200 pt-3 space-y-1">
+                            {isAuthenticated() ? (
+                                <a href="/dashboard" className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium transition-colors duration-200">
+                                    Dashboard
                                 </a>
-                                <a href="/register" className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium transition-colors duration-200">
-                                    Sign up
-                                </a>
-                            </>
-                        )}
+                            ) : (
+                                <>
+                                    <a href="/login" className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium transition-colors duration-200">
+                                        Login
+                                    </a>
+                                    <a href="/register" className="bg-blue-600 text-white block px-3 py-2 text-base font-medium rounded-md mx-3 text-center hover:bg-blue-700 transition-colors duration-200">
+                                        Sign up free
+                                    </a>
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

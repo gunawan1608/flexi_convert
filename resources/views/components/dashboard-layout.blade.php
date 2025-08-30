@@ -9,8 +9,8 @@
             </button>
         </div>
 
-        <!-- Mobile Overlay -->
-        <div id="mobile-overlay" class="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40 hidden"></div>
+        <!-- Mobile Overlay - Made transparent -->
+        <div id="mobile-overlay" class="lg:hidden fixed inset-0 bg-transparent backdrop-blur-sm z-40 hidden"></div>
 
         <!-- Sidebar -->
         <div id="sidebar" class="fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-xl transform -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out border-r border-gray-100">
