@@ -287,6 +287,23 @@ const VideoConverter = () => {
         return actionMap[toolId] || 'Process Video';
     };
 
+    const getDisplayFilename = (originalFilename) => {
+        if (!selectedTool) return originalFilename;
+        
+        // Get base filename without extension
+        const baseName = originalFilename.replace(/\.[^/.]+$/, '');
+        
+        // Return filename with correct extension based on tool
+        if (selectedTool.id.includes('to-avi')) return baseName + '.avi';
+        else if (selectedTool.id.includes('to-webm')) return baseName + '.webm';
+        else if (selectedTool.id.includes('to-gif')) return baseName + '.gif';
+        else if (selectedTool.id.includes('to-mp4')) return baseName + '.mp4';
+        else if (selectedTool.id === 'mp4-to-mp3') return baseName + '.mp3';
+        
+        // For optimization tools, keep original extension
+        return originalFilename;
+    };
+
     const handleDownload = async (downloadUrl, filename) => {
         try {
             console.log('Attempting download:', downloadUrl);
@@ -704,7 +721,7 @@ const VideoConverter = () => {
                                 {results.map((result, index) => (
                                     <div key={index} className="border border-gray-200 rounded-xl p-6 bg-white shadow-sm hover:shadow-md transition-shadow duration-200">
                                         <div className="flex items-center justify-between mb-4">
-                                            <span className="font-medium text-gray-900 truncate">{result.filename}</span>
+                                            <span className="font-medium text-gray-900 truncate">{getDisplayFilename(result.filename)}</span>
                                             <span className={`text-sm font-medium px-3 py-1 rounded-full ${
                                                 result.status === 'completed' ? 'bg-green-100 text-green-800' :
                                                 result.status === 'failed' ? 'bg-red-100 text-red-800' :
