@@ -134,6 +134,7 @@ class VideoToolsController extends Controller
             'mp4-to-webm' => ['mp4'],
             'webm-to-mp4' => ['webm'],
             'video-to-gif' => ['mp4', 'avi', 'mkv', 'mov', 'webm'],
+            'mp4-to-mp3' => ['mp4'],
             
             // Video Optimization tools
             'compress-video' => ['mp4', 'avi', 'mkv', 'mov', 'webm'],
@@ -364,9 +365,14 @@ class VideoToolsController extends Controller
 
     private function buildFFmpegCommand($inputPath, $outputPath, $tool, $settings)
     {
-        // Handle special case for video-to-gif first
+        // Handle special cases first
         if ($tool === 'video-to-gif') {
             return "ffmpeg -i \"$inputPath\" -vf \"fps=10,scale=320:-1:flags=lanczos\" -y \"$outputPath\"";
+        }
+        
+        // Handle MP4 to MP3 audio extraction
+        if ($tool === 'mp4-to-mp3') {
+            return "ffmpeg -i \"$inputPath\" -vn -acodec mp3 -ab 192k -ar 44100 -y \"$outputPath\"";
         }
 
         // Base command
@@ -450,8 +456,10 @@ class VideoToolsController extends Controller
                 break;
         }
 
-        // Audio codec for all tools except GIF
-        $command .= " -c:a aac -b:a 128k";
+        // Audio codec for all tools except GIF and MP3 extraction
+        if ($tool !== 'video-to-gif' && $tool !== 'mp4-to-mp3') {
+            $command .= " -c:a aac -b:a 128k";
+        }
 
         // Output file
         $command .= " -y \"$outputPath\"";
@@ -480,6 +488,8 @@ class VideoToolsController extends Controller
                 return 'webm';
             case 'video-to-gif':
                 return 'gif';
+            case 'mp4-to-mp3':
+                return 'mp3';
             case 'compress-video':
             case 'change-resolution':
             case 'change-bitrate':
@@ -582,6 +592,9 @@ class VideoToolsController extends Controller
             
             case 'video-to-gif':
                 return $cleanBaseName . '.gif';
+            
+            case 'mp4-to-mp3':
+                return $cleanBaseName . '.mp3';
             
             // Video optimization - add suffix
             case 'compress-video':

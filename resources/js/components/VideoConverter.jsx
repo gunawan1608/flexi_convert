@@ -79,6 +79,14 @@ const VideoConverter = () => {
                     icon: '🎭',
                     color: 'from-pink-500 to-pink-600',
                     formats: ['.mp4', '.avi', '.mkv', '.mov', '.webm']
+                },
+                { 
+                    id: 'mp4-to-mp3', 
+                    name: 'MP4 → MP3', 
+                    description: 'Extract audio from MP4 video to MP3', 
+                    icon: '🎵',
+                    color: 'from-emerald-500 to-emerald-600',
+                    formats: ['.mp4']
                 }
             ]
         },
@@ -223,6 +231,7 @@ const VideoConverter = () => {
             else if (selectedTool.id.includes('to-webm')) outputFormat = 'webm';
             else if (selectedTool.id.includes('to-gif')) outputFormat = 'gif';
             else if (selectedTool.id.includes('to-mp4')) outputFormat = 'mp4';
+            else if (selectedTool.id === 'mp4-to-mp3') outputFormat = 'mp3';
             
             // Add output format to settings
             const settingsWithFormat = {
@@ -269,6 +278,7 @@ const VideoConverter = () => {
             'mp4-to-webm': 'Convert to WebM',
             'webm-to-mp4': 'Convert to MP4',
             'video-to-gif': 'Convert to GIF',
+            'mp4-to-mp3': 'Extract Audio to MP3',
             'compress-video': 'Compress Video',
             'change-resolution': 'Change Resolution',
             'change-bitrate': 'Change Bitrate',
@@ -313,6 +323,7 @@ const VideoConverter = () => {
                 else if (selectedTool.id.includes('to-webm')) fileExtension = 'webm';
                 else if (selectedTool.id.includes('to-gif')) fileExtension = 'gif';
                 else if (selectedTool.id.includes('to-mp4')) fileExtension = 'mp4';
+                else if (selectedTool.id === 'mp4-to-mp3') fileExtension = 'mp3';
             }
 
             // Ensure the filename has the correct extension
