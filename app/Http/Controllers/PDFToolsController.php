@@ -111,6 +111,7 @@ class PDFToolsController extends Controller
                 return $this->addPageNumbers($files[0], $settings);
             case 'jpg-to-pdf':
             case 'image-to-pdf':
+            case 'images-to-pdf':
                 return $this->imageToPdf($files, $settings);
             case 'pdf-to-jpg':
             case 'pdf-to-image':
@@ -247,8 +248,9 @@ class PDFToolsController extends Controller
             'xlsx-to-pdf' => ['xls', 'xlsx', 'ods'],
             'ppt-to-pdf' => ['ppt', 'pptx', 'odp'],
             'powerpoint-to-pdf' => ['ppt', 'pptx', 'odp'],
-            'image-to-pdf' => ['jpg', 'jpeg', 'png', 'gif', 'bmp'],
-            'jpg-to-pdf' => ['jpg', 'jpeg', 'png', 'gif', 'bmp'],
+            'image-to-pdf' => ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff'],
+            'jpg-to-pdf' => ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff'],
+            'images-to-pdf' => ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff'],
             'pdf-to-word' => ['pdf'],
             'pdf-to-docx' => ['pdf'],
             'pdf-to-excel' => ['pdf'],
@@ -387,28 +389,62 @@ class PDFToolsController extends Controller
                 'updated_at' => now()
             ]);
 
-            // Simple implementation - create PDF from images
-            $html = '<html><body>';
-            foreach ($files as $file) {
+            // Enhanced implementation with settings support
+            $pageSize = $settings['pageSize'] ?? 'A4';
+            $orientation = $settings['orientation'] ?? 'portrait';
+            $margin = intval($settings['margin'] ?? 20);
+            $imageSize = $settings['imageSize'] ?? 'fit';
+            
+            // Build HTML with custom settings
+            $html = '<html><head><style>
+                body { margin: 0; padding: 0; }
+                .page { 
+                    page-break-after: always; 
+                    padding: ' . $margin . 'mm;
+                    text-align: center;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: calc(100vh - ' . ($margin * 2) . 'mm);
+                }
+                .image-container {
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .image-fit { max-width: 100%; max-height: 100%; }
+                .image-fill { width: 100%; height: 100%; object-fit: cover; }
+                .image-original { max-width: none; max-height: none; }
+                .image-center { max-width: 80%; max-height: 80%; }
+            </style></head><body>';
+            
+            foreach ($files as $index => $file) {
                 $imagePath = $file->store('temp');
                 $fullPath = Storage::path($imagePath);
                 $imageData = base64_encode(file_get_contents($fullPath));
                 $mimeType = $file->getMimeType();
                 
-                $html .= '<div style="page-break-after: always; text-align: center;">';
-                $html .= '<img src="data:' . $mimeType . ';base64,' . $imageData . '" style="max-width: 100%; max-height: 100%;">';
-                $html .= '</div>';
+                $imageClass = 'image-' . $imageSize;
+                $isLastImage = ($index === count($files) - 1);
+                
+                $html .= '<div class="page"' . ($isLastImage ? ' style="page-break-after: avoid;"' : '') . '>';
+                $html .= '<div class="image-container">';
+                $html .= '<img src="data:' . $mimeType . ';base64,' . $imageData . '" class="' . $imageClass . '">';
+                $html .= '</div></div>';
                 
                 Storage::delete($imagePath);
             }
             $html .= '</body></html>';
 
-            // Convert to PDF using DomPDF
+            // Convert to PDF using DomPDF with custom settings
             $options = new \Dompdf\Options();
             $options->set('defaultFont', 'Arial');
+            $options->set('isRemoteEnabled', true);
             $dompdf = new \Dompdf\Dompdf($options);
             $dompdf->loadHtml($html);
-            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->setPaper($pageSize, $orientation);
             $dompdf->render();
 
             Storage::put($outputPath, $dompdf->output());

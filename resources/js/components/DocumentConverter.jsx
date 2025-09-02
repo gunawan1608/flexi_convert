@@ -47,12 +47,20 @@ const DocumentConverter = () => {
                     formats: ['.ppt', '.pptx']
                 },
                 { 
-                    id: 'jpg-to-pdf', 
-                    name: 'Image → PDF', 
-                    description: 'Convert images to PDF documents', 
+                    id: 'images-to-pdf', 
+                    name: 'Images → PDF', 
+                    description: 'Convert multiple images to single PDF with custom ordering and margins', 
                     icon: '🖼️',
                     color: 'from-purple-500 to-purple-600',
-                    formats: ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
+                    formats: ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff'],
+                    multiFile: true,
+                    settings: {
+                        pageSize: 'A4',
+                        orientation: 'portrait',
+                        margin: '20',
+                        imageSize: 'fit',
+                        quality: 'high'
+                    }
                 },
                 { 
                     id: 'html-to-pdf', 
@@ -174,6 +182,7 @@ const DocumentConverter = () => {
             'ppt-to-pdf': { 'application/vnd.ms-powerpoint': ['.ppt'], 'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'] },
             'jpg-to-pdf': { 'image/jpeg': ['.jpg', '.jpeg'], 'image/png': ['.png'], 'image/gif': ['.gif'], 'image/bmp': ['.bmp'] },
             'image-to-pdf': { 'image/jpeg': ['.jpg', '.jpeg'], 'image/png': ['.png'], 'image/gif': ['.gif'], 'image/bmp': ['.bmp'] },
+            'images-to-pdf': { 'image/jpeg': ['.jpg', '.jpeg'], 'image/png': ['.png'], 'image/gif': ['.gif'], 'image/bmp': ['.bmp'], 'image/webp': ['.webp'], 'image/tiff': ['.tiff'] },
             'html-to-pdf': { 'text/html': ['.html', '.htm'] },
             'pdf-to-word': { 'application/pdf': ['.pdf'] },
             'pdf-to-excel': { 'application/pdf': ['.pdf'] },
@@ -192,7 +201,7 @@ const DocumentConverter = () => {
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
         accept: getAcceptTypes(),
-        multiple: selectedTool?.id === 'merge-pdf' || selectedTool?.id === 'image-to-pdf' || selectedTool?.id === 'jpg-to-pdf',
+        multiple: selectedTool?.id === 'merge-pdf' || selectedTool?.id === 'image-to-pdf' || selectedTool?.id === 'jpg-to-pdf' || selectedTool?.id === 'images-to-pdf',
         maxSize: 100 * 1024 * 1024,
         disabled: !selectedTool
     });
@@ -708,6 +717,88 @@ const DocumentConverter = () => {
                                         </div>
                                     )}
                                     
+                                    {/* Images to PDF Settings */}
+                                    {selectedTool.id === 'images-to-pdf' && (
+                                        <div className="space-y-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {/* Page Size */}
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Ukuran Halaman:
+                                                    </label>
+                                                    <select
+                                                        value={toolSettings.pageSize || 'A4'}
+                                                        onChange={(e) => setToolSettings({ ...toolSettings, pageSize: e.target.value })}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                                    >
+                                                        <option value="A4">A4 (210 × 297 mm)</option>
+                                                        <option value="A3">A3 (297 × 420 mm)</option>
+                                                        <option value="A5">A5 (148 × 210 mm)</option>
+                                                        <option value="Letter">Letter (8.5 × 11 in)</option>
+                                                        <option value="Legal">Legal (8.5 × 14 in)</option>
+                                                    </select>
+                                                </div>
+                                                
+                                                {/* Orientation */}
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Orientasi:
+                                                    </label>
+                                                    <select
+                                                        value={toolSettings.orientation || 'portrait'}
+                                                        onChange={(e) => setToolSettings({ ...toolSettings, orientation: e.target.value })}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                                    >
+                                                        <option value="portrait">Portrait (Vertikal)</option>
+                                                        <option value="landscape">Landscape (Horizontal)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {/* Margin */}
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Margin (mm):
+                                                    </label>
+                                                    <select
+                                                        value={toolSettings.margin || '20'}
+                                                        onChange={(e) => setToolSettings({ ...toolSettings, margin: e.target.value })}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                                    >
+                                                        <option value="10">10mm (Kecil)</option>
+                                                        <option value="20">20mm (Normal)</option>
+                                                        <option value="30">30mm (Besar)</option>
+                                                        <option value="40">40mm (Sangat Besar)</option>
+                                                    </select>
+                                                </div>
+                                                
+                                                {/* Image Size */}
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Ukuran Gambar:
+                                                    </label>
+                                                    <select
+                                                        value={toolSettings.imageSize || 'fit'}
+                                                        onChange={(e) => setToolSettings({ ...toolSettings, imageSize: e.target.value })}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                                    >
+                                                        <option value="fit">Fit to Page (Sesuaikan)</option>
+                                                        <option value="fill">Fill Page (Penuh)</option>
+                                                        <option value="original">Original Size (Asli)</option>
+                                                        <option value="center">Center (Tengah)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="bg-purple-100 border border-purple-300 rounded-lg p-3">
+                                                <p className="text-sm text-purple-800">
+                                                    <span className="font-medium">📋 Info:</span> Upload multiple images dan atur urutan dengan drag & drop. Semua gambar akan digabung menjadi satu PDF.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Compress PDF Settings */}
                                     {selectedTool.id === 'compress-pdf' && (
                                         <div className="space-y-4">
