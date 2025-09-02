@@ -554,7 +554,7 @@ const DocumentConverter = () => {
                             </div>
                             
                             {/* Tool-Specific Settings - Only show for PDF tools, not convert tools */}
-                            {selectedTool && ['rotate-pdf', 'split-pdf', 'compress-pdf', 'merge-pdf'].includes(selectedTool.id) && (
+                            {selectedTool && ['rotate-pdf', 'split-pdf', 'compress-pdf', 'merge-pdf', 'images-to-pdf'].includes(selectedTool.id) && (
                                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-200">
                                     <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                                         <span className="mr-2">⚙️</span>
