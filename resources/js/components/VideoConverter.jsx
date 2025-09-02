@@ -81,12 +81,28 @@ const VideoConverter = () => {
                     formats: ['.mp4', '.avi', '.mkv', '.mov', '.webm']
                 },
                 { 
-                    id: 'mp4-to-mp3', 
-                    name: 'MP4 → MP3', 
-                    description: 'Extract audio from MP4 video to MP3', 
+                    id: 'video-to-mp3', 
+                    name: 'Video → MP3', 
+                    description: 'Extract audio from video to MP3', 
                     icon: '🎵',
                     color: 'from-emerald-500 to-emerald-600',
-                    formats: ['.mp4']
+                    formats: ['.mp4', '.mov', '.mkv', '.avi', '.webm']
+                },
+                { 
+                    id: 'extract-audio-aac', 
+                    name: 'Video → AAC', 
+                    description: 'Extract audio from video to AAC format', 
+                    icon: '🎶',
+                    color: 'from-blue-500 to-blue-600',
+                    formats: ['.mp4', '.mov', '.mkv', '.avi', '.webm']
+                },
+                { 
+                    id: 'extract-audio-wav', 
+                    name: 'Video → WAV', 
+                    description: 'Extract audio from video to WAV format', 
+                    icon: '🔊',
+                    color: 'from-purple-500 to-purple-600',
+                    formats: ['.mp4', '.mov', '.mkv', '.avi', '.webm']
                 }
             ]
         },
@@ -231,7 +247,9 @@ const VideoConverter = () => {
             else if (selectedTool.id.includes('to-webm')) outputFormat = 'webm';
             else if (selectedTool.id.includes('to-gif')) outputFormat = 'gif';
             else if (selectedTool.id.includes('to-mp4')) outputFormat = 'mp4';
-            else if (selectedTool.id === 'mp4-to-mp3') outputFormat = 'mp3';
+            else if (selectedTool.id === 'video-to-mp3') outputFormat = 'mp3';
+            else if (selectedTool.id === 'extract-audio-aac') outputFormat = 'aac';
+            else if (selectedTool.id === 'extract-audio-wav') outputFormat = 'wav';
             
             // Add output format to settings
             const settingsWithFormat = {
@@ -275,10 +293,9 @@ const VideoConverter = () => {
             'avi-to-mp4': 'Convert to MP4',
             'mkv-to-mp4': 'Convert to MP4',
             'mov-to-mp4': 'Convert to MP4',
-            'mp4-to-webm': 'Convert to WebM',
-            'webm-to-mp4': 'Convert to MP4',
-            'video-to-gif': 'Convert to GIF',
-            'mp4-to-mp3': 'Extract Audio to MP3',
+            'video-to-mp3': 'Extract Audio to MP3',
+            'extract-audio-aac': 'Extract Audio to AAC',
+            'extract-audio-wav': 'Extract Audio to WAV',
             'compress-video': 'Compress Video',
             'change-resolution': 'Change Resolution',
             'change-bitrate': 'Change Bitrate',
@@ -298,7 +315,9 @@ const VideoConverter = () => {
         else if (selectedTool.id.includes('to-webm')) return baseName + '.webm';
         else if (selectedTool.id.includes('to-gif')) return baseName + '.gif';
         else if (selectedTool.id.includes('to-mp4')) return baseName + '.mp4';
-        else if (selectedTool.id === 'mp4-to-mp3') return baseName + '.mp3';
+        else if (selectedTool.id === 'video-to-mp3') return baseName + '.mp3';
+        else if (selectedTool.id === 'extract-audio-aac') return baseName + '.aac';
+        else if (selectedTool.id === 'extract-audio-wav') return baseName + '.wav';
         
         // For optimization tools, keep original extension
         return originalFilename;
@@ -340,7 +359,9 @@ const VideoConverter = () => {
                 else if (selectedTool.id.includes('to-webm')) fileExtension = 'webm';
                 else if (selectedTool.id.includes('to-gif')) fileExtension = 'gif';
                 else if (selectedTool.id.includes('to-mp4')) fileExtension = 'mp4';
-                else if (selectedTool.id === 'mp4-to-mp3') fileExtension = 'mp3';
+                else if (selectedTool.id === 'video-to-mp3') fileExtension = 'mp3';
+                else if (selectedTool.id === 'extract-audio-aac') fileExtension = 'aac';
+                else if (selectedTool.id === 'extract-audio-wav') fileExtension = 'wav';
             }
 
             // Ensure the filename has the correct extension

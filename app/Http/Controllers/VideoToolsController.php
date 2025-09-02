@@ -134,7 +134,10 @@ class VideoToolsController extends Controller
             'mp4-to-webm' => ['mp4'],
             'webm-to-mp4' => ['webm'],
             'video-to-gif' => ['mp4', 'avi', 'mkv', 'mov', 'webm'],
-            'mp4-to-mp3' => ['mp4'],
+            'video-to-mp3' => ['mp4', 'mov', 'mkv', 'avi', 'webm'],
+            'extract-audio-mp3' => ['mp4', 'mov', 'mkv', 'avi', 'webm'],
+            'extract-audio-aac' => ['mp4', 'mov', 'mkv', 'avi', 'webm'],
+            'extract-audio-wav' => ['mp4', 'mov', 'mkv', 'avi', 'webm'],
             
             // Video Optimization tools
             'compress-video' => ['mp4', 'avi', 'mkv', 'mov', 'webm'],
@@ -370,9 +373,17 @@ class VideoToolsController extends Controller
             return "ffmpeg -i \"$inputPath\" -vf \"fps=10,scale=320:-1:flags=lanczos\" -y \"$outputPath\"";
         }
         
-        // Handle MP4 to MP3 audio extraction
-        if ($tool === 'mp4-to-mp3') {
+        // Handle audio extraction from video
+        if ($tool === 'video-to-mp3' || $tool === 'extract-audio-mp3') {
             return "ffmpeg -i \"$inputPath\" -vn -acodec mp3 -ab 192k -ar 44100 -y \"$outputPath\"";
+        }
+        
+        if ($tool === 'extract-audio-aac') {
+            return "ffmpeg -i \"$inputPath\" -vn -acodec aac -ab 192k -ar 44100 -y \"$outputPath\"";
+        }
+        
+        if ($tool === 'extract-audio-wav') {
+            return "ffmpeg -i \"$inputPath\" -vn -acodec pcm_s16le -ar 44100 -y \"$outputPath\"";
         }
 
         // Base command
@@ -456,8 +467,8 @@ class VideoToolsController extends Controller
                 break;
         }
 
-        // Audio codec for all tools except GIF and MP3 extraction
-        if ($tool !== 'video-to-gif' && $tool !== 'mp4-to-mp3') {
+        // Audio codec for all tools except GIF and audio extraction
+        if ($tool !== 'video-to-gif' && !in_array($tool, ['video-to-mp3', 'extract-audio-mp3', 'extract-audio-aac', 'extract-audio-wav'])) {
             $command .= " -c:a aac -b:a 128k";
         }
 
@@ -488,8 +499,13 @@ class VideoToolsController extends Controller
                 return 'webm';
             case 'video-to-gif':
                 return 'gif';
-            case 'mp4-to-mp3':
+            case 'video-to-mp3':
+            case 'extract-audio-mp3':
                 return 'mp3';
+            case 'extract-audio-aac':
+                return 'aac';
+            case 'extract-audio-wav':
+                return 'wav';
             case 'compress-video':
             case 'change-resolution':
             case 'change-bitrate':
@@ -593,8 +609,15 @@ class VideoToolsController extends Controller
             case 'video-to-gif':
                 return $cleanBaseName . '.gif';
             
-            case 'mp4-to-mp3':
+            case 'video-to-mp3':
+            case 'extract-audio-mp3':
                 return $cleanBaseName . '.mp3';
+            
+            case 'extract-audio-aac':
+                return $cleanBaseName . '.aac';
+            
+            case 'extract-audio-wav':
+                return $cleanBaseName . '.wav';
             
             // Video optimization - add suffix
             case 'compress-video':
