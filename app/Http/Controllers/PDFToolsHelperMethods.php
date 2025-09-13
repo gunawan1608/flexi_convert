@@ -12,7 +12,7 @@ use Symfony\Component\Process\Process;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 use App\Models\PdfProcessing;
 use Slide\Layout;
-use Smalot\PdfParser\Parser as PdfParser;
+use Smalot\PdfParser\Parser;
 
 /**
  * PDFToolsHelperMethods adalah class helper statis, bukan trait. 
@@ -975,7 +975,7 @@ class PDFToolsHelperMethods
                 'size' => number_format($fileSize / 1024, 2) . ' KB'
             ]);
             
-            $parser = new Parser();
+            $parser = new \Smalot\PdfParser\Parser();
             $pdf = $parser->parseFile($pdfPath);
             
             // Get total page count
@@ -1143,7 +1143,7 @@ class PDFToolsHelperMethods
             Log::info("Using fallback PDF text extraction method");
             
             // Try with reduced memory approach - process in smaller chunks
-            $parser = new Parser();
+            $parser = new \Smalot\PdfParser\Parser();
             
             // Set lower memory limit for fallback
             ini_set('memory_limit', '512M');
@@ -1193,9 +1193,9 @@ class PDFToolsHelperMethods
      */
     public static function createPowerPointFromPdfPages(string $pdfPath, string $outputPath, array $settings = []): string
     {
-        // Check if Imagick is available
+        // Check if Imagick extension is available
         if (!extension_loaded('imagick')) {
-            throw new \Exception('Imagick extension is not available for PDF to PowerPoint conversion');
+            throw new \Exception('Imagick PHP extension is not installed. Please install php-imagick extension.');
         }
         
         // Check if Ghostscript is available and properly configured
@@ -1205,23 +1205,26 @@ class PDFToolsHelperMethods
         
         // Memory and execution time handling for large files
         $fileSize = filesize($pdfPath);
-        if ($fileSize > 20 * 1024 * 1024) { // 20MB
+        if ($fileSize > 50 * 1024 * 1024) { // 50MB
+            ini_set('memory_limit', '2G');
+            ini_set('max_execution_time', 900); // 15 minutes
+        } else if ($fileSize > 20 * 1024 * 1024) { // 20MB
             ini_set('memory_limit', '1G');
-            ini_set('max_execution_time', 300); // 5 minutes
+            ini_set('max_execution_time', 600); // 10 minutes
         } else if ($fileSize > 5 * 1024 * 1024) { // 5MB
-            ini_set('max_execution_time', 180); // 3 minutes
+            ini_set('max_execution_time', 300); // 5 minutes
         } else {
-            ini_set('max_execution_time', 120); // 2 minutes
+            ini_set('max_execution_time', 180); // 3 minutes
         }
         
-        // Parse settings with optimized DPI for performance
-        $defaultDpi = 72; // Lower default for better performance
+        // Parse settings with optimized DPI for speed vs quality balance
+        $defaultDpi = 150; // Balanced default for speed and quality
         if ($fileSize > 20 * 1024 * 1024) {
-            $defaultDpi = 72; // Very large files: 72 DPI
+            $defaultDpi = 120; // Very large files: 120 DPI for speed
         } else if ($fileSize > 10 * 1024 * 1024) {
-            $defaultDpi = 100; // Large files: 100 DPI
+            $defaultDpi = 150; // Large files: 150 DPI
         } else {
-            $defaultDpi = 150; // Small files: 150 DPI
+            $defaultDpi = 200; // Small files: 200 DPI for good quality
         }
         
         $dpi = $settings['dpi'] ?? $defaultDpi;
@@ -1230,100 +1233,63 @@ class PDFToolsHelperMethods
         
         try {
             // Create presentation
-            $presentation = new PhpPresentation();
+            $presentation = new \PhpOffice\PhpPresentation\PhpPresentation();
             $presentation->removeSlideByIndex(0); // Remove default slide
             
-            // Set Ghostscript path environment variable for this process
-            $ghostscriptPath = self::findGhostscriptPath();
-            if ($ghostscriptPath && file_exists($ghostscriptPath)) {
-                // Set environment variable for Imagick to find Ghostscript
-            }
+            // Get PDF page count first with optimized settings
             $imagick = new \Imagick();
-            $imagick->setResolution(120, 120); // Lower resolution for faster processing
-            $imagick->readImage($pdfPath . "[{$pageIndex}]");
-            
-            // Set format and clean alpha
-            $imagick->setImageFormat('png');
-            $imagick->setImageAlphaChannel(Imagick::ALPHACHANNEL_REMOVE);
-            $imagick->setImageBackgroundColor($background);
-            $imagick->flattenImages();
-            
-            // Get image as blob
-            $imageBlob = $imagick->getImageBlob();
-            
-            // Create slide
-            $slide = $presentation->createSlide();
-            
-            // Save image to temporary file and add to slide
-            $tempImagePath = sys_get_temp_dir() . '/pdf_page_' . $pageIndex . '_' . uniqid() . '.png';
-            file_put_contents($tempImagePath, $imageBlob);
-            
-            $drawing = new \PhpOffice\PhpPresentation\Shape\Drawing\File();
-            $drawing->setName('PDF Page ' . ($pageIndex + 1));
-            $drawing->setDescription('PDF Page ' . ($pageIndex + 1));
-            $drawing->setPath($tempImagePath);
-            
-            // Fit to slide maintaining aspect ratio
-            $slideWidth = 720; // Default slide width in points
-            $slideHeight = 540; // Default slide height in points (16:9)
-            
-            $imageWidth = $imagick->getImageWidth();
-            $imageHeight = $imagick->getImageHeight();
-            
-            $scaleX = $slideWidth / $imageWidth;
-            $scaleY = $slideHeight / $imageHeight;
-            $scale = min($scaleX, $scaleY);
-            
-            $newWidth = $imageWidth * $scale;
-            $newHeight = $imageHeight * $scale;
-            
-            $drawing->setWidth($newWidth);
-            $drawing->setHeight($newHeight);
-            
-            // Center the image
-            $offsetX = ($slideWidth - $newWidth) / 2;
-            $offsetY = ($slideHeight - $newHeight) / 2;
-            $drawing->setOffsetX($offsetX);
-            $drawing->setOffsetY($offsetY);
-            
-            $slide->addShape($drawing);
-            
-            // Clean up Imagick and temp file
+            $imagick->setResolution(72, 72); // Low resolution for page counting only
+            $imagick->readImage($pdfPath);
+            $totalPages = $imagick->getNumberImages();
             $imagick->clear();
-            $imagick->destroy();
             
-            // Register temp file for cleanup after presentation is saved
-            $tempFiles[] = $tempImagePath;
-            
-            // Parse page range if specified
-            $pagesToProcess = range(0, $pageCount - 1);
-            if ($pageRange) {
-                $pagesToProcess = self::parsePageRange($pageRange, $pageCount);
+            // Limit pages for faster processing - max 30 pages
+            $maxPages = 30;
+            if ($totalPages > $maxPages) {
+                Log::warning("PDF has {$totalPages} pages, limiting to first {$maxPages} pages for faster processing");
+                $totalPages = $maxPages;
             }
             
-            // Array to track temp files for cleanup
-            $tempFiles = [];
+            // Process pages based on range or all pages
+            if ($pageRange) {
+                $pagesToProcess = self::parsePageRange($pageRange, $totalPages);
+            } else {
+                $pagesToProcess = range(0, min($totalPages - 1, $maxPages - 1));
+            }
             
-            // Add progress tracking for large files
             $processedPages = 0;
-            $totalPages = count($pagesToProcess);
+            $totalPagesToProcess = count($pagesToProcess);
             
             foreach ($pagesToProcess as $pageIndex) {
                 $processedPages++;
                 
-                // Log progress every 10 pages for large documents
-                if ($totalPages > 10 && $processedPages % 10 === 0) {
-                    Log::info("PDF to PowerPoint: Progress {$processedPages}/{$totalPages} pages");
+                // Log progress for large files
+                if ($totalPagesToProcess > 10 && $processedPages % 5 == 0) {
+                    Log::info("Processing page {$processedPages}/{$totalPagesToProcess}");
                 }
-                $imagick = new Imagick();
-                $imagick->setResolution($dpi, $dpi);
-                $imagick->readImage($pdfPath . "[{$pageIndex}]");
                 
-                // Set format and clean alpha
-                $imagick->setImageFormat('png');
-                $imagick->setImageAlphaChannel(Imagick::ALPHACHANNEL_REMOVE);
+                // Reset execution time for each page to prevent timeout
+                set_time_limit(30); // 30 seconds per page for faster processing
+                
+                $imagick = new \Imagick();
+                $imagick->setResolution($dpi, $dpi);
+                // Optimize Imagick settings for speed
+                $imagick->setOption('pdf:use-cropbox', 'true');
+                $imagick->setOption('pdf:use-trimbox', 'true');
+                $imagick->readImage($pdfPath . "[{$pageIndex}]");
+            
+                // Set optimized format for speed
+                $imagick->setImageFormat('jpeg'); // JPEG is faster than PNG
+                $imagick->setImageCompressionQuality(85); // Good quality, faster processing
+                $imagick->setImageAlphaChannel(\Imagick::ALPHACHANNEL_REMOVE);
                 $imagick->setImageBackgroundColor($background);
                 $imagick->flattenImages();
+                
+                // Selective enhancement for speed
+                if ($fileSize < 5 * 1024 * 1024) { // Only for small files
+                    $imagick->enhanceImage();
+                    $imagick->sharpenImage(0, 0.5); // Light sharpening
+                }
                 
                 // Get image as blob
                 $imageBlob = $imagick->getImageBlob();
@@ -1332,17 +1298,17 @@ class PDFToolsHelperMethods
                 $slide = $presentation->createSlide();
                 
                 // Save image to temporary file and add to slide
-                $tempImagePath = sys_get_temp_dir() . '/pdf_page_' . $pageIndex . '_' . uniqid() . '.png';
+                $tempImagePath = sys_get_temp_dir() . '/pdf_page_' . $pageIndex . '_' . uniqid() . '.jpg';
                 file_put_contents($tempImagePath, $imageBlob);
                 
                 $drawing = new \PhpOffice\PhpPresentation\Shape\Drawing\File();
                 $drawing->setName('PDF Page ' . ($pageIndex + 1));
                 $drawing->setDescription('PDF Page ' . ($pageIndex + 1));
                 $drawing->setPath($tempImagePath);
-                
-                // Fit to slide maintaining aspect ratio
-                $slideWidth = 720; // Default slide width in points
-                $slideHeight = 540; // Default slide height in points (16:9)
+            
+                // Fit to slide maintaining aspect ratio - modern widescreen format
+                $slideWidth = 960; // Modern widescreen width in points
+                $slideHeight = 540; // Modern widescreen height in points (16:9)
                 
                 $imageWidth = $imagick->getImageWidth();
                 $imageHeight = $imagick->getImageHeight();
@@ -1369,35 +1335,38 @@ class PDFToolsHelperMethods
                 $imagick->clear();
                 $imagick->destroy();
                 
-                // Register temp file for cleanup after presentation is saved
-                $tempFiles[] = $tempImagePath;
-            }
-            
-            // Ensure output directory exists
-            $outputDir = dirname($outputPath);
-            if (!file_exists($outputDir)) {
-                @mkdir($outputDir, 0777, true);
-            }
-            
-            // Save presentation
-            $writer = IOFactory::createWriter($presentation, 'PowerPoint2007');
-            $writer->save($outputPath);
-            
-            // Verify file was created
-            if (!file_exists($outputPath) || filesize($outputPath) === 0) {
-                throw new \Exception('Failed to create PowerPoint file or file is empty');
-            }
-            
-            // Clean up temporary image files
-            foreach ($tempFiles as $tempFile) {
-                if (file_exists($tempFile)) {
-                    @unlink($tempFile);
+                // Clean up temp file
+                if (file_exists($tempImagePath)) {
+                    unlink($tempImagePath);
                 }
             }
             
-            Log::info("PowerPoint created successfully: " . basename($outputPath) . " (" . count($pagesToProcess) . " slides)");
-            return $outputPath;
+            // Set modern presentation layout and properties
+            $presentation->getLayout()->setDocumentLayout(
+                \PhpOffice\PhpPresentation\DocumentLayout::LAYOUT_SCREEN_16X9
+            );
             
+            // Set presentation properties for modern PowerPoint
+            $presentation->getDocumentProperties()
+                ->setCreator('FlexiConvert - Modern PDF Converter')
+                ->setLastModifiedBy('FlexiConvert')
+                ->setTitle('High-Quality PDF to PowerPoint Conversion')
+                ->setSubject('Professional PDF Conversion')
+                ->setDescription('High-resolution PDF to modern PowerPoint conversion with enhanced quality')
+                ->setKeywords('PDF PowerPoint PPTX conversion high-quality modern')
+                ->setCategory('Professional Document Conversion')
+                ->setCompany('FlexiConvert Solutions');
+            
+            // Save with modern PowerPoint format
+            $writer = \PhpOffice\PhpPresentation\IOFactory::createWriter($presentation, 'PowerPoint2007');
+            $writer->save($outputPath);
+            
+            Log::info("PowerPoint created successfully with {$processedPages} slides", [
+                'output_path' => $outputPath,
+                'file_size' => number_format(filesize($outputPath) / 1024, 2) . ' KB'
+            ]);
+            
+            return $outputPath;
         } catch (\Exception $e) {
             Log::error("PowerPoint creation from PDF pages failed: " . $e->getMessage());
             throw new \Exception("Failed to create PowerPoint from PDF pages: " . $e->getMessage());
@@ -1436,8 +1405,14 @@ class PDFToolsHelperMethods
     private static function isGhostscriptAvailable(): bool
     {
         try {
+            // Check if Imagick extension is available
+            if (!extension_loaded('imagick')) {
+                Log::warning("Imagick PHP extension is not installed");
+                return false;
+            }
+            
             // Check if PDF format is supported by Imagick
-            $formats = Imagick::queryFormats('PDF');
+            $formats = \Imagick::queryFormats('PDF');
             if (empty($formats)) {
                 return false;
             }
@@ -1453,7 +1428,7 @@ class PDFToolsHelperMethods
             try {
                 // Set Ghostscript path for Imagick delegate
                 if (method_exists('Imagick', 'setResourceLimit')) {
-                    Imagick::setResourceLimit(Imagick::RESOURCETYPE_MEMORY, 256 * 1024 * 1024); // 256MB
+                    \Imagick::setResourceLimit(\Imagick::RESOURCETYPE_MEMORY, 256 * 1024 * 1024); // 256MB
                 }
                 
                 Log::info("Ghostscript configured for Imagick: $ghostscriptPath");
@@ -2147,7 +2122,7 @@ class PDFToolsHelperMethods
         }
 
         try {
-            $presentation = new PhpPresentation();
+            $presentation = new \PhpOffice\PhpPresentation\PhpPresentation();
             $slide = $presentation->getActiveSlide();
             
             // Title slide
@@ -2189,7 +2164,7 @@ class PDFToolsHelperMethods
                 $contentRun->getFont()->setSize(12);
             }
             
-            $writer = new PowerPoint2007($presentation);
+            $writer = \PhpOffice\PhpPresentation\IOFactory::createWriter($presentation, 'PowerPoint2007');
             $writer->save($outputPath);
             
             \Log::info("PowerPoint document created successfully: " . basename($outputPath));

@@ -1029,8 +1029,7 @@ class PDFToolsController extends Controller
                     Log::warning("PDF to PowerPoint: preserve_layout failed, falling back to text-only", [
                         'error' => $e->getMessage()
                     ]);
-                    $textContent = PDFToolsHelperMethods::extractTextFromPdf($fullInputPath);
-                    PDFToolsHelperMethods::createPowerPointDocument($textContent, Storage::path($outputPath), $fullInputPath);
+                    PDFToolsHelperMethods::createPowerPointFromPdfPages($fullInputPath, Storage::path($outputPath));
                 }
             } else {
                 // Use text-only conversion

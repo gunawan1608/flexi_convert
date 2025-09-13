@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "9e7987a0ff4cb0a9ec59ad144e42f099",
+    "content-hash": "e7f24a4e44d82ce1c7255ec0f37b0b67",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -4256,7 +4256,7 @@
         },
         {
             "name": "phpoffice/phppresentation",
-            "version": "dev-master",
+            "version": "1.2.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/PHPOffice/PHPPresentation.git",
@@ -4284,7 +4284,6 @@
             "suggest": {
                 "ext-gd": "Required to add images"
             },
-            "default-branch": true,
             "type": "library",
             "autoload": {
                 "psr-4": {
@@ -11202,9 +11201,7 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {
-        "phpoffice/phppresentation": 20
-    },
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
