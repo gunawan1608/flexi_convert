@@ -292,11 +292,11 @@ class PDFToolsController extends Controller
     {
         $mimeMap = [
             'pdf' => ['application/pdf'],
-            'doc' => ['application/msword'],
+            'doc' => ['application/msword', 'application/octet-stream'],
             'docx' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/octet-stream'],
             'odt' => ['application/vnd.oasis.opendocument.text'],
-            'xls' => ['application/vnd.ms-excel'],
-            'xlsx' => ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream'],
+            'xls' => ['application/vnd.ms-excel', 'text/html', 'application/octet-stream', 'application/x-ole-storage'],
+            'xlsx' => ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream', 'application/zip'],
             'ods' => ['application/vnd.oasis.opendocument.spreadsheet'],
             'ppt' => ['application/vnd.ms-powerpoint'],
             'pptx' => ['application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/octet-stream'],
