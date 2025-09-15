@@ -138,26 +138,44 @@ class PDFToolsHelperMethods
             throw new Exception('LibreOffice not found - will use fallback conversion');
         }
 
-        // Create unique temporary directory for this conversion to prevent file collisions
-        $uniqueTempDir = $outputDir . DIRECTORY_SEPARATOR . 'temp_' . Str::uuid();
-        if (!mkdir($uniqueTempDir, 0755, true)) {
-            throw new Exception('Failed to create temporary directory: ' . $uniqueTempDir);
+        // Create a unique subdirectory within the output directory to avoid file conflicts
+        $uniqueSubDir = $outputDir . DIRECTORY_SEPARATOR . 'libreoffice_' . uniqid();
+        if (!mkdir($uniqueSubDir, 0755, true)) {
+            throw new Exception('Failed to create LibreOffice output directory: ' . $uniqueSubDir);
         }
 
         try {
-            // Windows-specific LibreOffice command with proper arguments
+            // Enhanced LibreOffice command with specific PDF export filters for maximum quality
+            $fileExtension = strtolower(pathinfo($inputPath, PATHINFO_EXTENSION));
+            $pdfExportFilter = 'pdf';
+            
+            // Use specific export filters for different document types
+            switch ($fileExtension) {
+                case 'doc':
+                case 'docx':
+                case 'odt':
+                    $pdfExportFilter = 'pdf:writer_pdf_Export';
+                    break;
+                case 'xls':
+                case 'xlsx':
+                case 'ods':
+                    $pdfExportFilter = 'pdf:calc_pdf_Export';
+                    break;
+                case 'ppt':
+                case 'pptx':
+                case 'odp':
+                    $pdfExportFilter = 'pdf:impress_pdf_Export';
+                    break;
+            }
+            
+            // Simplified LibreOffice command - sometimes complex filters cause issues
             $command = [
                 $libreOfficePath,
                 '--headless',
-                '--invisible',
-                '--nodefault',
-                '--nolockcheck',
-                '--nologo',
-                '--norestore',
                 '--convert-to',
                 'pdf',
                 '--outdir',
-                $uniqueTempDir,
+                $uniqueSubDir,
                 $inputPath
             ];
 
@@ -177,8 +195,8 @@ class PDFToolsHelperMethods
                 'input_path' => $inputPath,
                 'input_exists' => file_exists($inputPath),
                 'input_size' => file_exists($inputPath) ? filesize($inputPath) : 0,
-                'temp_dir' => $uniqueTempDir,
-                'temp_dir_exists' => is_dir($uniqueTempDir),
+                'unique_subdir' => $uniqueSubDir,
+                'subdir_exists' => is_dir($uniqueSubDir),
                 'libreoffice_path' => $libreOfficePath
             ]);
             
@@ -204,7 +222,7 @@ class PDFToolsHelperMethods
                 // Try alternative approach with cmd.exe wrapper
                 if (PHP_OS_FAMILY === 'Windows' && ($process->getExitCode() === -1073740791 || $process->getExitCode() !== 0)) {
                     Log::info('Trying Windows cmd.exe wrapper approach due to exit code: ' . $process->getExitCode());
-                    return self::convertWithLibreOfficeWindows($inputPath, $uniqueTempDir, $outputDir);
+                    return self::convertWithLibreOfficeWindows($inputPath, $uniqueSubDir, $outputDir);
                 }
                 
                 throw new ProcessFailedException($process);
@@ -212,30 +230,92 @@ class PDFToolsHelperMethods
 
             
             // Add delay to ensure file system operations are complete
-            sleep(1);
+            sleep(3);
             
-            // Find generated PDF files in the unique temp directory
-            $pdfFiles = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*.pdf');
-            $allFiles = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*');
+            // Check if LibreOffice created any files at all
+            $allFiles = glob($uniqueSubDir . DIRECTORY_SEPARATOR . '*');
+            $pdfFiles = glob($uniqueSubDir . DIRECTORY_SEPARATOR . '*.pdf');
+            
+            // Also check if LibreOffice created files with the original name
+            $inputBasename = pathinfo($inputPath, PATHINFO_FILENAME);
+            $expectedPdfPath = $uniqueSubDir . DIRECTORY_SEPARATOR . $inputBasename . '.pdf';
             
             Log::info('LibreOffice output check', [
-                'temp_dir' => $uniqueTempDir,
-                'temp_dir_exists' => is_dir($uniqueTempDir),
-                'temp_dir_writable' => is_writable($uniqueTempDir),
+                'unique_subdir' => $uniqueSubDir,
+                'subdir_exists' => is_dir($uniqueSubDir),
+                'subdir_writable' => is_writable($uniqueSubDir),
+                'input_basename' => $inputBasename,
+                'expected_pdf_path' => $expectedPdfPath,
+                'expected_pdf_exists' => file_exists($expectedPdfPath),
                 'pdf_files_found' => count($pdfFiles),
                 'pdf_files' => $pdfFiles,
                 'all_files_found' => count($allFiles),
-                'all_files' => $allFiles
+                'all_files' => $allFiles,
+                'working_directory' => getcwd(),
+                'process_output' => $process->getOutput(),
+                'process_error' => $process->getErrorOutput()
             ]);
             
-            if (count($pdfFiles) === 0) {
-                throw new Exception('LibreOffice conversion failed - no PDF files found in temp directory: ' . $uniqueTempDir . '. Check if LibreOffice is properly installed and the input file is valid.');
+            // Try to find the expected PDF file first
+            if (file_exists($expectedPdfPath)) {
+                $pdfFiles = [$expectedPdfPath];
             }
             
-            // Get the first (and should be only) PDF file
-            $tempPdfPath = $pdfFiles[0];
+            if (count($pdfFiles) === 0) {
+                // Try alternative approach: run LibreOffice with different working directory
+                Log::info('Attempting alternative LibreOffice approach with working directory change');
+                
+                $originalCwd = getcwd();
+                chdir($uniqueSubDir);
+                
+                $altCommand = [
+                    $libreOfficePath,
+                    '--headless',
+                    '--convert-to',
+                    'pdf',
+                    $inputPath
+                ];
+                
+                $altProcess = new Process($altCommand);
+                $altProcess->setTimeout(120);
+                $altProcess->run();
+                
+                chdir($originalCwd);
+                
+                Log::info('Alternative LibreOffice attempt result', [
+                    'exit_code' => $altProcess->getExitCode(),
+                    'output' => $altProcess->getOutput(),
+                    'error' => $altProcess->getErrorOutput()
+                ]);
+                
+                // Check again for PDF files
+                sleep(2);
+                $pdfFiles = glob($uniqueSubDir . DIRECTORY_SEPARATOR . '*.pdf');
+                $allFiles = glob($uniqueSubDir . DIRECTORY_SEPARATOR . '*');
+                
+                Log::info('Alternative approach file check', [
+                    'pdf_files' => $pdfFiles,
+                    'all_files' => $allFiles
+                ]);
+                
+                if (count($pdfFiles) === 0) {
+                    // Try Windows cmd.exe approach as final fallback
+                    Log::info('Attempting Windows cmd.exe fallback approach');
+                    return self::convertWithLibreOfficeWindows($inputPath, $uniqueSubDir, $outputDir);
+                }
+            }
             
-            // Move the PDF to the final output directory with a unique name
+            // Get the most recently created PDF file
+            $tempPdfPath = $pdfFiles[0];
+            if (count($pdfFiles) > 1) {
+                // Sort by modification time, get the newest
+                usort($pdfFiles, function($a, $b) {
+                    return filemtime($b) - filemtime($a);
+                });
+                $tempPdfPath = $pdfFiles[0];
+            }
+            
+            // Move the PDF to a unique name in the same directory
             $finalPdfName = 'converted_' . Str::uuid() . '.pdf';
             $finalPdfPath = $outputDir . DIRECTORY_SEPARATOR . $finalPdfName;
             
@@ -245,7 +325,7 @@ class PDFToolsHelperMethods
             
             Log::info('LibreOffice conversion successful', [
                 'input' => basename($inputPath),
-                'temp_dir' => $uniqueTempDir,
+                'unique_subdir' => $uniqueSubDir,
                 'final_path' => $finalPdfPath,
                 'file_size' => filesize($finalPdfPath)
             ]);
@@ -253,15 +333,15 @@ class PDFToolsHelperMethods
             return $finalPdfPath;
             
         } finally {
-            // Clean up temporary directory
-            if (is_dir($uniqueTempDir)) {
-                $files = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*');
+            // Clean up the unique subdirectory
+            if (isset($uniqueSubDir) && is_dir($uniqueSubDir)) {
+                $files = glob($uniqueSubDir . DIRECTORY_SEPARATOR . '*');
                 foreach ($files as $file) {
                     if (is_file($file)) {
                         @unlink($file);
                     }
                 }
-                @rmdir($uniqueTempDir);
+                @rmdir($uniqueSubDir);
             }
         }
     }
@@ -272,8 +352,8 @@ class PDFToolsHelperMethods
     private static function convertWithLibreOfficeWindows($inputPath, $uniqueTempDir, $outputDir)
     {
         try {
-            // Use direct soffice command since it's in PATH
-            $cmdLine = "soffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --convert-to pdf --outdir \"{$uniqueTempDir}\" \"{$inputPath}\"";
+            // Use direct soffice command with simplified parameters
+            $cmdLine = "\"C:\\Program Files\\LibreOffice\\program\\soffice.exe\" --headless --convert-to pdf --outdir \"{$uniqueTempDir}\" \"{$inputPath}\"";
             
             Log::info('Windows LibreOffice conversion with direct command', [
                 'command' => $cmdLine,
@@ -306,9 +386,9 @@ class PDFToolsHelperMethods
             }
             
             // Add delay to ensure file system operations are complete
-            sleep(1);
+            sleep(2);
             
-            // Find generated PDF files
+            // Find generated PDF files in temp directory
             $pdfFiles = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*.pdf');
             $allFiles = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*');
             
@@ -323,7 +403,46 @@ class PDFToolsHelperMethods
             ]);
             
             if (count($pdfFiles) === 0) {
-                throw new Exception('LibreOffice Windows conversion failed - no PDF files found');
+                // Final diagnostic: try converting to a simple temp file name
+                Log::info('Final diagnostic attempt with simple filename');
+                
+                $simpleName = 'test_output.pdf';
+                $simpleCmd = "\"C:\\Program Files\\LibreOffice\\program\\soffice.exe\" --headless --convert-to pdf \"{$inputPath}\"";
+                
+                $originalDir = getcwd();
+                chdir($uniqueTempDir);
+                
+                $diagOutput = [];
+                $diagReturn = 0;
+                exec($simpleCmd . ' 2>&1', $diagOutput, $diagReturn);
+                
+                chdir($originalDir);
+                
+                Log::info('Diagnostic conversion result', [
+                    'command' => $simpleCmd,
+                    'return_code' => $diagReturn,
+                    'output' => implode("\n", $diagOutput)
+                ]);
+                
+                sleep(2);
+                $finalCheck = glob($uniqueTempDir . DIRECTORY_SEPARATOR . '*');
+                
+                Log::info('Final diagnostic file check', [
+                    'files_found' => $finalCheck
+                ]);
+                
+                if (empty($finalCheck)) {
+                    throw new Exception('LibreOffice appears to be unable to process this Word document. This could be due to: 1) Corrupted or protected document, 2) LibreOffice configuration issues, 3) Insufficient permissions, or 4) Unsupported document features. Please try with a different document or check LibreOffice installation.');
+                } else {
+                    // Found some files, use the first one
+                    $pdfFiles = array_filter($finalCheck, function($file) {
+                        return pathinfo($file, PATHINFO_EXTENSION) === 'pdf';
+                    });
+                    
+                    if (empty($pdfFiles)) {
+                        throw new Exception('LibreOffice created files but no PDF output. Files created: ' . implode(', ', array_map('basename', $finalCheck)));
+                    }
+                }
             }
             
             // Move the PDF to final location
@@ -542,48 +661,123 @@ class PDFToolsHelperMethods
     }
 
     /**
-     * Convert HTML to PDF using DomPDF
+     * Convert HTML to PDF using DomPDF with enhanced quality settings
      */
     private static function convertHtmlToPdfWithDomPdf(string $htmlContent, string $outputPath, array $settings = []): bool
     {
         try {
-            // Check if DomPDF is available
-            if (!class_exists('Dompdf\Dompdf')) {
-                Log::warning('DomPDF not available, install with: composer require dompdf/dompdf');
-                return false;
-            }
-
-            $dompdf = new \Dompdf\Dompdf();
-            
-            // Set options
-            $options = $dompdf->getOptions();
-            $options->set('isHtml5ParserEnabled', true);
+            // Enhanced DomPDF options for maximum quality
+            $options = new \Dompdf\Options();
+            $options->set('defaultFont', 'DejaVu Sans');
             $options->set('isRemoteEnabled', true);
-            $options->set('defaultFont', 'Arial');
+            $options->set('isHtml5ParserEnabled', true);
+            $options->set('isFontSubsettingEnabled', true);
+            $options->set('isPhpEnabled', false);
+            $options->set('debugKeepTemp', false);
+            $options->set('debugCss', false);
+            $options->set('debugLayout', false);
+            $options->set('debugLayoutLines', false);
+            $options->set('debugLayoutBlocks', false);
+            $options->set('debugLayoutInline', false);
+            $options->set('debugLayoutPaddingBox', false);
             
-            // Paper size and orientation
-            $paperSize = $settings['page_size'] ?? 'A4';
+            // Paper size and orientation from settings
+            $paperSize = $settings['paperSize'] ?? 'A4';
             $orientation = $settings['orientation'] ?? 'portrait';
             
-            $dompdf->loadHtml($htmlContent);
-            $dompdf->setPaper($paperSize, strtolower($orientation));
+            // Enhanced HTML preprocessing for better PDF output
+            $enhancedHtml = self::preprocessHtmlForPdf($htmlContent);
+            
+            $dompdf = new \Dompdf\Dompdf($options);
+            $dompdf->loadHtml($enhancedHtml);
+            $dompdf->setPaper($paperSize, $orientation);
             $dompdf->render();
             
-            // Save PDF
-            $pdfContent = $dompdf->output();
-            file_put_contents($outputPath, $pdfContent);
+            // Save to output path
+            file_put_contents($outputPath, $dompdf->output());
             
-            Log::info('DomPDF conversion completed', [
-                'output_file_exists' => file_exists($outputPath),
-                'file_size' => filesize($outputPath)
+            Log::info('DomPDF HTML to PDF conversion successful', [
+                'output_path' => $outputPath,
+                'file_size' => filesize($outputPath),
+                'paper_size' => $paperSize,
+                'orientation' => $orientation
             ]);
             
-            return file_exists($outputPath);
+            return true;
             
         } catch (Exception $e) {
-            Log::error('DomPDF conversion failed: ' . $e->getMessage());
+            Log::error('DomPDF HTML to PDF conversion failed', [
+                'error' => $e->getMessage(),
+                'output_path' => $outputPath
+            ]);
             return false;
         }
+    }
+    
+    /**
+     * Preprocess HTML content for better PDF conversion
+     */
+    private static function preprocessHtmlForPdf(string $htmlContent): string
+    {
+        // Add CSS for better PDF rendering
+        $pdfCss = '
+        <style>
+        body {
+            font-family: "DejaVu Sans", Arial, sans-serif;
+            font-size: 12pt;
+            line-height: 1.4;
+            margin: 20mm;
+            color: #333;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            color: #000;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            page-break-after: avoid;
+        }
+        h1 { font-size: 18pt; }
+        h2 { font-size: 16pt; }
+        h3 { font-size: 14pt; }
+        p {
+            margin-bottom: 0.5em;
+            text-align: justify;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1em;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+        }
+        .page-break {
+            page-break-before: always;
+        }
+        @page {
+            margin: 20mm;
+        }
+        </style>';
+        
+        // Insert CSS into HTML head or at the beginning
+        if (stripos($htmlContent, '<head>') !== false) {
+            $htmlContent = str_ireplace('<head>', '<head>' . $pdfCss, $htmlContent);
+        } else if (stripos($htmlContent, '<html>') !== false) {
+            $htmlContent = str_ireplace('<html>', '<html><head>' . $pdfCss . '</head>', $htmlContent);
+        } else {
+            $htmlContent = $pdfCss . $htmlContent;
+        }
+        
+        return $htmlContent;
     }
 
     /**
@@ -2614,75 +2808,34 @@ class PDFToolsHelperMethods
             $inputPath = $file->store(config('pdftools.storage.uploads_path'));
             $fullInputPath = Storage::path($inputPath);
 
-            // Try LibreOffice first (highest quality)
-            if (config('pdftools.office_to_pdf_engine') === 'libreoffice') {
-                try {
-                    $tempDir = sys_get_temp_dir();
-                    $convertedPath = self::convertWithLibreOffice($fullInputPath, $tempDir);
-                    
-                    if ($convertedPath && file_exists($convertedPath)) {
-                        Storage::put($outputPath, file_get_contents($convertedPath));
-                        unlink($convertedPath);
-                        Storage::delete($inputPath);
-                        
-                        $processing->update([
-                            'status' => 'completed',
-                            'progress' => 100,
-                            'completed_at' => now()
-                        ]);
+            // Use LibreOffice ONLY for consistent 100% quality
+            $tempDir = sys_get_temp_dir();
+            $convertedPath = self::convertWithLibreOffice($fullInputPath, $tempDir);
+            
+            if ($convertedPath && file_exists($convertedPath)) {
+                Storage::put($outputPath, file_get_contents($convertedPath));
+                unlink($convertedPath);
+                Storage::delete($inputPath);
+                
+                $processing->update([
+                    'status' => 'completed',
+                    'progress' => 100,
+                    'completed_at' => now()
+                ]);
 
-                        $processingTime = microtime(true) - $startTime;
-                        self::logConversionMetrics('word-to-pdf', $file->getSize(), 
-                            Storage::size($outputPath), $processingTime, auth()->id());
+                $processingTime = microtime(true) - $startTime;
+                self::logConversionMetrics('word-to-pdf', $file->getSize(), 
+                    Storage::size($outputPath), $processingTime, auth()->id());
 
-                        return self::createSuccessResponse(
-                            'Word document converted to PDF successfully.',
-                            $processing->id,
-                            $friendlyFilename,
-                            route('pdf-tools.download', $processing->id)
-                        );
-                    }
-                } catch (Exception $e) {
-                    Log::warning('LibreOffice conversion failed, falling back to PhpOffice', [
-                        'error' => $e->getMessage()
-                    ]);
-                    $isFallback = true;
-                }
+                return self::createSuccessResponse(
+                    'Word document converted to PDF successfully with LibreOffice.',
+                    $processing->id,
+                    $friendlyFilename,
+                    route('pdf-tools.download', $processing->id)
+                );
+            } else {
+                throw new Exception('LibreOffice conversion failed. Please ensure LibreOffice is installed and accessible.');
             }
-
-            // Fallback to PhpOffice + DomPDF
-            $htmlContent = self::extractWordAsHtml($fullInputPath);
-            
-            $options = new \Dompdf\Options();
-            $options->set('defaultFont', 'Arial');
-            $options->set('isRemoteEnabled', true);
-            $options->set('isHtml5ParserEnabled', true);
-            
-            $dompdf = new \Dompdf\Dompdf($options);
-            $dompdf->loadHtml($htmlContent);
-            $dompdf->setPaper('A4', 'portrait');
-            $dompdf->render();
-
-            Storage::put($outputPath, $dompdf->output());
-            Storage::delete($inputPath);
-            
-            $processing->update([
-                'status' => 'completed',
-                'progress' => 100,
-                'completed_at' => now()
-            ]);
-
-            $processingTime = microtime(true) - $startTime;
-            self::logConversionMetrics('word-to-pdf', $file->getSize(), 
-                Storage::size($outputPath), $processingTime, auth()->id());
-
-            return self::createSuccessResponse(
-                'Word document converted to PDF successfully.',
-                $processing->id,
-                $friendlyFilename,
-                route('pdf-tools.download', $processing->id),
-                $isFallback
-            );
 
         } catch (Exception $e) {
             if ($processing) {

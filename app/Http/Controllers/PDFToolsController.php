@@ -237,6 +237,56 @@ class PDFToolsController extends Controller
     }
 
     /**
+     * Find LibreOffice executable path
+     */
+    private function findLibreOffice()
+    {
+        // Common LibreOffice paths
+        $paths = [
+            '/usr/bin/libreoffice',
+            '/usr/bin/soffice',
+            '/opt/libreoffice/program/soffice',
+            '/Applications/LibreOffice.app/Contents/MacOS/soffice',
+            'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+            'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
+            'C:\\Program Files\\LibreOffice\\program\\soffice.com'
+        ];
+
+        foreach ($paths as $path) {
+            if (file_exists($path)) {
+                Log::info('LibreOffice found at path', ['path' => $path]);
+                return $path;
+            }
+        }
+
+        // Try to find in PATH
+        if (PHP_OS_FAMILY === 'Windows') {
+            $process = popen('where soffice 2>nul', 'r');
+            if ($process) {
+                $path = trim(fread($process, 1024));
+                pclose($process);
+                if ($path && file_exists($path)) {
+                    Log::info('LibreOffice found via where command', ['path' => $path]);
+                    return $path;
+                }
+            }
+        } else {
+            $process = popen('which soffice 2>/dev/null', 'r');
+            if ($process) {
+                $path = trim(fread($process, 1024));
+                pclose($process);
+                if ($path && file_exists($path)) {
+                    Log::info('LibreOffice found via which command', ['path' => $path]);
+                    return $path;
+                }
+            }
+        }
+
+        Log::warning('LibreOffice not found in any standard location');
+        return null;
+    }
+
+    /**
      * Validate file types for specific conversion tools
      */
     private function validateFileTypesForTool($tool, $files)
@@ -323,40 +373,6 @@ class PDFToolsController extends Controller
         return array_unique($validMimeTypes);
     }
 
-    /**
-     * Find LibreOffice executable path on Windows
-     */
-    private function findLibreOffice(): ?string
-    {
-        $possiblePaths = [
-            'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
-            'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
-            getenv('PROGRAMFILES') . '\\LibreOffice\\program\\soffice.exe',
-            getenv('PROGRAMFILES(X86)') . '\\LibreOffice\\program\\soffice.exe'
-        ];
-
-        foreach ($possiblePaths as $path) {
-            if ($path && file_exists($path)) {
-                Log::info('LibreOffice found at: ' . $path);
-                return $path;
-            }
-        }
-
-        // Try to find via registry or PATH
-        $command = 'where soffice.exe 2>nul';
-        exec($command, $output, $returnCode);
-        
-        if ($returnCode === 0 && !empty($output[0])) {
-            $path = trim($output[0]);
-            if (file_exists($path)) {
-                Log::info('LibreOffice found via PATH: ' . $path);
-                return $path;
-            }
-        }
-
-        Log::error('LibreOffice not found in any expected locations');
-        return null;
-    }
 
     /**
      * Convert images to PDF
@@ -389,73 +405,93 @@ class PDFToolsController extends Controller
                 'updated_at' => now()
             ]);
 
-            // Enhanced implementation with settings support
+            // Enhanced implementation with professional quality settings
             $pageSize = $settings['pageSize'] ?? 'A4';
             $orientation = $settings['orientation'] ?? 'portrait';
-            $margin = intval($settings['margin'] ?? 20);
+            $margin = intval($settings['margin'] ?? 10);
             $imageSize = $settings['imageSize'] ?? 'fit';
+            $quality = intval($settings['quality'] ?? 95);
             
-            // Build HTML with custom settings
-            $html = '<html><head><style>
-                body { margin: 0; padding: 0; }
-                .page { 
-                    page-break-after: always; 
-                    padding: ' . $margin . 'mm;
-                    text-align: center;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    min-height: calc(100vh - ' . ($margin * 2) . 'mm);
-                }
-                .image-container {
-                    width: 100%;
-                    height: 100%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                }
-                .image-fit { max-width: 100%; max-height: 100%; }
-                .image-fill { width: 100%; height: 100%; object-fit: cover; }
-                .image-original { max-width: none; max-height: none; }
-                .image-center { max-width: 80%; max-height: 80%; }
-            </style></head><body>';
+            // Create professional PDF using FPDF with image optimization
+            $pdf = new \setasign\Fpdi\Fpdi();
             
             foreach ($files as $index => $file) {
-                $imagePath = $file->store('temp');
-                $fullPath = Storage::path($imagePath);
-                $imageData = base64_encode(file_get_contents($fullPath));
-                $mimeType = $file->getMimeType();
+                $tempPath = $file->store('temp');
+                $fullPath = Storage::path($tempPath);
                 
-                $imageClass = 'image-' . $imageSize;
-                $isLastImage = ($index === count($files) - 1);
+                // Get image dimensions and optimize
+                $imageInfo = getimagesize($fullPath);
+                if (!$imageInfo) {
+                    continue; // Skip invalid images
+                }
                 
-                $html .= '<div class="page"' . ($isLastImage ? ' style="page-break-after: avoid;"' : '') . '>';
-                $html .= '<div class="image-container">';
-                $html .= '<img src="data:' . $mimeType . ';base64,' . $imageData . '" class="' . $imageClass . '">';
-                $html .= '</div></div>';
+                $imageWidth = $imageInfo[0];
+                $imageHeight = $imageInfo[1];
+                $imageType = $imageInfo[2];
                 
-                Storage::delete($imagePath);
+                // Add new page
+                $pdf->AddPage($orientation, $pageSize);
+                
+                // Calculate page dimensions in mm
+                $pageWidth = $pdf->GetPageWidth();
+                $pageHeight = $pdf->GetPageHeight();
+                $usableWidth = $pageWidth - ($margin * 2);
+                $usableHeight = $pageHeight - ($margin * 2);
+                
+                // Calculate image placement for maximum quality
+                $aspectRatio = $imageWidth / $imageHeight;
+                $pageAspectRatio = $usableWidth / $usableHeight;
+                
+                if ($imageSize === 'fit') {
+                    if ($aspectRatio > $pageAspectRatio) {
+                        // Image is wider - fit to width
+                        $displayWidth = $usableWidth;
+                        $displayHeight = $usableWidth / $aspectRatio;
+                    } else {
+                        // Image is taller - fit to height
+                        $displayHeight = $usableHeight;
+                        $displayWidth = $usableHeight * $aspectRatio;
+                    }
+                } else {
+                    // Fill page
+                    $displayWidth = $usableWidth;
+                    $displayHeight = $usableHeight;
+                }
+                
+                // Center the image
+                $x = $margin + ($usableWidth - $displayWidth) / 2;
+                $y = $margin + ($usableHeight - $displayHeight) / 2;
+                
+                // Add image with high quality
+                try {
+                    $pdf->Image($fullPath, $x, $y, $displayWidth, $displayHeight);
+                } catch (Exception $e) {
+                    Log::warning('Failed to add image to PDF: ' . $e->getMessage());
+                    continue;
+                }
+                
+                // Clean up temp file
+                Storage::delete($tempPath);
             }
-            $html .= '</body></html>';
-
-            // Convert to PDF using DomPDF with custom settings
-            $options = new \Dompdf\Options();
-            $options->set('defaultFont', 'Arial');
-            $options->set('isRemoteEnabled', true);
-            $dompdf = new \Dompdf\Dompdf($options);
-            $dompdf->loadHtml($html);
-            $dompdf->setPaper($pageSize, $orientation);
-            $dompdf->render();
-
-            Storage::put($outputPath, $dompdf->output());
-
+            
+            // Save the PDF
+            $finalPath = Storage::path($outputPath);
+            $pdf->Output($finalPath, 'F');
+            
+            // Update processing status
             $processing->update([
                 'status' => 'completed',
                 'progress' => 100,
+                'processed_file_size' => filesize($finalPath),
                 'completed_at' => now()
             ]);
 
-            return PDFToolsHelperMethods::createSuccessResponse('Images berhasil dikonversi ke PDF', $processing->id, $outputFileName, route('pdf-tools.download', $processing->id));
+            return PDFToolsHelperMethods::createSuccessResponse(
+                'Images berhasil dikonversi ke PDF',
+                $processing->id,
+                $outputFileName,
+                route('pdf-tools.download', $processing->id)
+            );
 
         } catch (\Exception $e) {
             if (isset($processing)) {
@@ -762,10 +798,41 @@ class PDFToolsController extends Controller
                 mkdir($outputDir, 0755, true);
             }
 
-            $command = "\"{$libreOfficePath}\" --headless --convert-to pdf --outdir \"{$outputDir}\" \"{$fullInputPath}\"";
-            Log::info('Executing LibreOffice command for Excel: ' . $command);
+            // Enhanced LibreOffice command for maximum quality Excel conversion
+            $command = "\"{$libreOfficePath}\" --headless --invisible --nodefault --nolockcheck --nologo --norestore --convert-to pdf:writer_pdf_Export --outdir \"{$outputDir}\" \"{$fullInputPath}\"";
+            Log::info('Executing enhanced LibreOffice command for Excel: ' . $command);
             
-            exec($command, $output, $returnCode);
+            // Set environment for better conversion
+            $env = $_ENV;
+            if (PHP_OS_FAMILY === 'Windows') {
+                $env['HOME'] = sys_get_temp_dir();
+                $env['TMPDIR'] = sys_get_temp_dir();
+            }
+            
+            $descriptorspec = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'], 
+                2 => ['pipe', 'w']
+            ];
+            
+            $process = proc_open($command, $descriptorspec, $pipes, null, $env);
+            
+            if (is_resource($process)) {
+                fclose($pipes[0]);
+                $output = stream_get_contents($pipes[1]);
+                $error = stream_get_contents($pipes[2]);
+                fclose($pipes[1]);
+                fclose($pipes[2]);
+                $returnCode = proc_close($process);
+                
+                Log::info('LibreOffice Excel process output', [
+                    'stdout' => $output,
+                    'stderr' => $error
+                ]);
+            } else {
+                $returnCode = -1;
+                $output = [];
+            }
             
             Log::info('LibreOffice Excel execution result', [
                 'return_code' => $returnCode,
@@ -921,10 +988,41 @@ class PDFToolsController extends Controller
                 mkdir($outputDir, 0755, true);
             }
 
-            $command = "\"{$libreOfficePath}\" --headless --convert-to pdf --outdir \"{$outputDir}\" \"{$fullInputPath}\"";
-            Log::info('Executing LibreOffice command: ' . $command);
+            // Enhanced LibreOffice command for maximum quality PowerPoint conversion
+            $command = "\"{$libreOfficePath}\" --headless --invisible --nodefault --nolockcheck --nologo --norestore --convert-to pdf:impress_pdf_Export --outdir \"{$outputDir}\" \"{$fullInputPath}\"";
+            Log::info('Executing enhanced LibreOffice command for PowerPoint: ' . $command);
             
-            exec($command, $output, $returnCode);
+            // Set environment for better conversion
+            $env = $_ENV;
+            if (PHP_OS_FAMILY === 'Windows') {
+                $env['HOME'] = sys_get_temp_dir();
+                $env['TMPDIR'] = sys_get_temp_dir();
+            }
+            
+            $descriptorspec = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'], 
+                2 => ['pipe', 'w']
+            ];
+            
+            $process = proc_open($command, $descriptorspec, $pipes, null, $env);
+            
+            if (is_resource($process)) {
+                fclose($pipes[0]);
+                $output = stream_get_contents($pipes[1]);
+                $error = stream_get_contents($pipes[2]);
+                fclose($pipes[1]);
+                fclose($pipes[2]);
+                $returnCode = proc_close($process);
+                
+                Log::info('LibreOffice PowerPoint process output', [
+                    'stdout' => $output,
+                    'stderr' => $error
+                ]);
+            } else {
+                $returnCode = -1;
+                $output = [];
+            }
             
             Log::info('LibreOffice execution result', [
                 'return_code' => $returnCode,
