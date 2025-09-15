@@ -130,7 +130,7 @@ class PDFToolsHelperMethods
     /**
      * Convert Office document to PDF using LibreOffice CLI with unique temp directory
      */
-    private static function convertWithLibreOffice($inputPath, $outputDir)
+    public static function convertWithLibreOffice($inputPath, $outputDir)
     {
         $libreOfficePath = self::findLibreOffice();
         if (!$libreOfficePath) {

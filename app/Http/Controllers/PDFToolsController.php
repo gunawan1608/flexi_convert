@@ -783,104 +783,26 @@ class PDFToolsController extends Controller
                 'settings' => json_encode($settings)
             ]);
 
-            // Try LibreOffice
-            $libreOfficePath = $this->findLibreOffice();
-            if (!$libreOfficePath) {
-                throw new \Exception('LibreOffice tidak ditemukan. Pastikan LibreOffice sudah terinstall.');
-            }
-            
-            if (!is_executable($libreOfficePath)) {
-                throw new \Exception('LibreOffice tidak dapat dieksekusi: ' . $libreOfficePath);
-            }
-
+            // Use the same reliable conversion method as Word to PDF
             $outputDir = Storage::path('pdf-tools/outputs');
             if (!is_dir($outputDir)) {
                 mkdir($outputDir, 0755, true);
             }
 
-            // Enhanced LibreOffice command for maximum quality Excel conversion
-            $command = "\"{$libreOfficePath}\" --headless --invisible --nodefault --nolockcheck --nologo --norestore --convert-to pdf:writer_pdf_Export --outdir \"{$outputDir}\" \"{$fullInputPath}\"";
-            Log::info('Executing enhanced LibreOffice command for Excel: ' . $command);
+            $convertedPdfPath = PDFToolsHelperMethods::convertWithLibreOffice($fullInputPath, $outputDir);
             
-            // Set environment for better conversion
-            $env = $_ENV;
-            if (PHP_OS_FAMILY === 'Windows') {
-                $env['HOME'] = sys_get_temp_dir();
-                $env['TMPDIR'] = sys_get_temp_dir();
-            }
+            $finalPath = Storage::path($outputPath);
+            rename($convertedPdfPath, $finalPath);
+            Storage::delete($inputPath);
             
-            $descriptorspec = [
-                0 => ['pipe', 'r'],
-                1 => ['pipe', 'w'], 
-                2 => ['pipe', 'w']
-            ];
-            
-            $process = proc_open($command, $descriptorspec, $pipes, null, $env);
-            
-            if (is_resource($process)) {
-                fclose($pipes[0]);
-                $output = stream_get_contents($pipes[1]);
-                $error = stream_get_contents($pipes[2]);
-                fclose($pipes[1]);
-                fclose($pipes[2]);
-                $returnCode = proc_close($process);
-                
-                Log::info('LibreOffice Excel process output', [
-                    'stdout' => $output,
-                    'stderr' => $error
-                ]);
-            } else {
-                $returnCode = -1;
-                $output = [];
-            }
-            
-            Log::info('LibreOffice Excel execution result', [
-                'return_code' => $returnCode,
-                'output' => $output,
-                'command' => $command
+            $processing->update([
+                'status' => 'completed',
+                'progress' => 100,
+                'processed_file_size' => filesize($finalPath),
+                'completed_at' => now()
             ]);
-            
-            if ($returnCode === 0) {
-                // Use glob to find generated PDF files instead of assuming filename
-                $pdfFiles = glob($outputDir . DIRECTORY_SEPARATOR . '*.pdf');
-                
-                Log::info('Searching for generated Excel PDF files', [
-                    'output_dir' => $outputDir,
-                    'found_files' => $pdfFiles,
-                    'file_count' => count($pdfFiles)
-                ]);
-                
-                if (count($pdfFiles) === 0) {
-                    throw new \Exception("File PDF hasil konversi Excel tidak ditemukan di {$outputDir}");
-                }
-                
-                // Get the most recently created PDF file (in case there are multiple)
-                $generatedPdf = $pdfFiles[0];
-                if (count($pdfFiles) > 1) {
-                    // Sort by modification time, get the newest
-                    usort($pdfFiles, function($a, $b) {
-                        return filemtime($b) - filemtime($a);
-                    });
-                    $generatedPdf = $pdfFiles[0];
-                }
-                
-                Log::info('Using generated Excel PDF: ' . $generatedPdf);
-                
-                $finalPath = Storage::path($outputPath);
-                rename($generatedPdf, $finalPath);
-                Storage::delete($inputPath);
-                
-                $processing->update([
-                    'status' => 'completed',
-                    'progress' => 100,
-                    'processed_file_size' => filesize($finalPath),
-                    'completed_at' => now()
-                ]);
 
-                return PDFToolsHelperMethods::createSuccessResponse('Excel berhasil dikonversi ke PDF', $processing->id, $outputFileName, route('pdf-tools.download', $processing->id));
-            } else {
-                throw new \Exception('LibreOffice Excel conversion failed with return code: ' . $returnCode . '. Output: ' . implode("\n", $output));
-            }
+            return PDFToolsHelperMethods::createSuccessResponse('Excel berhasil dikonversi ke PDF', $processing->id, $outputFileName, route('pdf-tools.download', $processing->id));
 
         } catch (\Exception $e) {
             if ($processing) {
@@ -973,106 +895,28 @@ class PDFToolsController extends Controller
                 'settings' => json_encode($settings)
             ]);
 
-            // Try LibreOffice
-            $libreOfficePath = $this->findLibreOffice();
-            if (!$libreOfficePath) {
-                throw new \Exception('LibreOffice tidak ditemukan. Pastikan LibreOffice sudah terinstall.');
-            }
-            
-            if (!is_executable($libreOfficePath)) {
-                throw new \Exception('LibreOffice tidak dapat dieksekusi: ' . $libreOfficePath);
-            }
-
+            // Use the same reliable conversion method as Word to PDF
             $outputDir = Storage::path('pdf-tools/outputs');
             if (!is_dir($outputDir)) {
                 mkdir($outputDir, 0755, true);
             }
 
-            // Enhanced LibreOffice command for maximum quality PowerPoint conversion
-            $command = "\"{$libreOfficePath}\" --headless --invisible --nodefault --nolockcheck --nologo --norestore --convert-to pdf:impress_pdf_Export --outdir \"{$outputDir}\" \"{$fullInputPath}\"";
-            Log::info('Executing enhanced LibreOffice command for PowerPoint: ' . $command);
+            $convertedPdfPath = PDFToolsHelperMethods::convertWithLibreOffice($fullInputPath, $outputDir);
             
-            // Set environment for better conversion
-            $env = $_ENV;
-            if (PHP_OS_FAMILY === 'Windows') {
-                $env['HOME'] = sys_get_temp_dir();
-                $env['TMPDIR'] = sys_get_temp_dir();
-            }
+            $finalPath = Storage::path($outputPath);
+            rename($convertedPdfPath, $finalPath);
+            Storage::delete($inputPath);
             
-            $descriptorspec = [
-                0 => ['pipe', 'r'],
-                1 => ['pipe', 'w'], 
-                2 => ['pipe', 'w']
-            ];
-            
-            $process = proc_open($command, $descriptorspec, $pipes, null, $env);
-            
-            if (is_resource($process)) {
-                fclose($pipes[0]);
-                $output = stream_get_contents($pipes[1]);
-                $error = stream_get_contents($pipes[2]);
-                fclose($pipes[1]);
-                fclose($pipes[2]);
-                $returnCode = proc_close($process);
-                
-                Log::info('LibreOffice PowerPoint process output', [
-                    'stdout' => $output,
-                    'stderr' => $error
-                ]);
-            } else {
-                $returnCode = -1;
-                $output = [];
-            }
-            
-            Log::info('LibreOffice execution result', [
-                'return_code' => $returnCode,
-                'output' => $output,
-                'command' => $command
+            $processing->update([
+                'status' => 'completed',
+                'progress' => 100,
+                'processed_file_size' => filesize($finalPath),
+                'completed_at' => now()
             ]);
-            
-            if ($returnCode === 0) {
-                // Use glob to find generated PDF files instead of assuming filename
-                $pdfFiles = glob($outputDir . DIRECTORY_SEPARATOR . '*.pdf');
-                
-                Log::info('Searching for generated PDF files', [
-                    'output_dir' => $outputDir,
-                    'found_files' => $pdfFiles,
-                    'file_count' => count($pdfFiles)
-                ]);
-                
-                if (count($pdfFiles) === 0) {
-                    throw new \Exception("File PDF hasil konversi tidak ditemukan di {$outputDir}");
-                }
-                
-                // Get the most recently created PDF file (in case there are multiple)
-                $generatedPdf = $pdfFiles[0];
-                if (count($pdfFiles) > 1) {
-                    // Sort by modification time, get the newest
-                    usort($pdfFiles, function($a, $b) {
-                        return filemtime($b) - filemtime($a);
-                    });
-                    $generatedPdf = $pdfFiles[0];
-                }
-                
-                Log::info('Using generated PDF: ' . $generatedPdf);
-                
-                $finalPath = Storage::path($outputPath);
-                rename($generatedPdf, $finalPath);
-                Storage::delete($inputPath);
-                
-                $processing->update([
-                    'status' => 'completed',
-                    'progress' => 100,
-                    'processed_file_size' => filesize($finalPath),
-                    'completed_at' => now()
-                ]);
 
-                return PDFToolsHelperMethods::createSuccessResponse('PowerPoint berhasil dikonversi ke PDF', $processing->id, $outputFileName, route('pdf-tools.download', $processing->id));
-            } else {
-                throw new \Exception('LibreOffice conversion failed with return code: ' . $returnCode . '. Output: ' . implode("\n", $output));
-            }
+            return PDFToolsHelperMethods::createSuccessResponse('PowerPoint berhasil dikonversi ke PDF', $processing->id, $outputFileName, route('pdf-tools.download', $processing->id));
 
-        }  catch (\Exception $e) {
+        } catch (\Exception $e) {
             if ($processing) {
                 $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
             }
