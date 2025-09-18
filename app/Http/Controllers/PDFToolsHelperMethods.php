@@ -128,6 +128,159 @@ class PDFToolsHelperMethods
     }
 
     /**
+     * Convert PDF to Word using LibreOffice with optimized PDF import filter
+     * This method provides the highest quality conversion similar to iLovePDF
+     */
+    public static function convertPdfToWordWithLibreOffice($inputPath, $outputPath)
+    {
+        Log::info('Starting LibreOffice PDF to Word conversion', [
+            'input_path' => $inputPath,
+            'output_path' => $outputPath
+        ]);
+
+        $libreOfficePath = self::findLibreOffice();
+        if (!$libreOfficePath) {
+            Log::warning('LibreOffice not found for PDF to Word conversion');
+            throw new Exception('LibreOffice_Not_Found');
+        }
+
+        // Create temporary directory for LibreOffice processing
+        $tempDir = dirname($outputPath) . DIRECTORY_SEPARATOR . 'libreoffice_pdf2word_' . uniqid();
+        if (!mkdir($tempDir, 0755, true)) {
+            throw new Exception('Failed to create temp directory: ' . $tempDir);
+        }
+
+        try {
+            // Try multiple LibreOffice conversion approaches
+            $commands = [
+                // Method 1: Direct PDF to DOCX conversion
+                [
+                    $libreOfficePath,
+                    '--headless',
+                    '--invisible',
+                    '--convert-to',
+                    'docx',
+                    '--outdir',
+                    $tempDir,
+                    $inputPath
+                ],
+                // Method 2: Use Writer with PDF import
+                [
+                    $libreOfficePath,
+                    '--headless',
+                    '--invisible',
+                    '--writer',
+                    '--convert-to',
+                    'docx',
+                    '--outdir',
+                    $tempDir,
+                    $inputPath
+                ],
+                // Method 3: Use Draw for PDF import then convert
+                [
+                    $libreOfficePath,
+                    '--headless',
+                    '--invisible',
+                    '--draw',
+                    '--convert-to',
+                    'docx',
+                    '--outdir',
+                    $tempDir,
+                    $inputPath
+                ]
+            ];
+            
+            $conversionSuccess = false;
+            $generatedFiles = [];
+            
+            foreach ($commands as $commandIndex => $command) {
+                Log::info('Trying LibreOffice conversion method ' . ($commandIndex + 1), [
+                    'command' => implode(' ', $command)
+                ]);
+
+                $env = $_ENV;
+                if (PHP_OS_FAMILY === 'Windows') {
+                    $env['HOME'] = sys_get_temp_dir();
+                    $env['TMPDIR'] = sys_get_temp_dir();
+                }
+
+                $process = new Process($command);
+                $process->setTimeout(120); // 2 minutes timeout
+                $process->run(null, $env);
+
+                // Check for generated files
+                $inputBasename = pathinfo($inputPath, PATHINFO_FILENAME);
+                $expectedFile = $tempDir . DIRECTORY_SEPARATOR . $inputBasename . '.docx';
+                
+                // Check for any DOCX files in temp directory
+                $generatedFiles = glob($tempDir . DIRECTORY_SEPARATOR . '*.docx');
+                
+                Log::info('LibreOffice conversion attempt ' . ($commandIndex + 1) . ' result', [
+                    'exit_code' => $process->getExitCode(),
+                    'expected_file' => $expectedFile,
+                    'generated_files' => $generatedFiles,
+                    'output' => $process->getOutput(),
+                    'error' => $process->getErrorOutput()
+                ]);
+
+                if (!empty($generatedFiles) && file_exists($generatedFiles[0])) {
+                    // Success! Move file to final location
+                    $convertedFile = $generatedFiles[0];
+                    
+                    if (rename($convertedFile, $outputPath)) {
+                        $fileSize = filesize($outputPath);
+                        Log::info('LibreOffice PDF to Word conversion successful with method ' . ($commandIndex + 1), [
+                            'output_path' => $outputPath,
+                            'file_size' => $fileSize
+                        ]);
+                        
+                        // Verify the file is a valid DOCX (should be > 5KB for real content)
+                        if ($fileSize > 5000) {
+                            $conversionSuccess = true;
+                            break; // Exit the loop, conversion successful
+                        } else {
+                            Log::warning('Generated DOCX file too small with method ' . ($commandIndex + 1) . ': ' . $fileSize . ' bytes');
+                            // Continue to next method
+                            @unlink($outputPath); // Clean up small file
+                        }
+                    } else {
+                        Log::warning('Failed to move converted file from method ' . ($commandIndex + 1));
+                        // Continue to next method
+                    }
+                }
+                
+                // Clean up any files from this attempt
+                $tempFiles = glob($tempDir . DIRECTORY_SEPARATOR . '*');
+                foreach ($tempFiles as $tempFile) {
+                    if (is_file($tempFile)) {
+                        @unlink($tempFile);
+                    }
+                }
+            }
+            
+            if ($conversionSuccess) {
+                return $outputPath;
+            }
+
+            // If all conversion methods failed
+            Log::warning('All LibreOffice PDF to DOCX conversion methods failed');
+            throw new Exception('LibreOffice_All_Methods_Failed');
+
+        } finally {
+            // Clean up temporary directory
+            if (is_dir($tempDir)) {
+                $files = glob($tempDir . DIRECTORY_SEPARATOR . '*');
+                foreach ($files as $file) {
+                    if (is_file($file)) {
+                        @unlink($file);
+                    }
+                }
+                @rmdir($tempDir);
+            }
+        }
+    }
+
+    /**
      * Convert PDF to Office format using alternative approach since LibreOffice PDF import is limited
      */
     public static function convertPdfToOfficeWithLibreOffice($inputPath, $outputDir, $targetFormat = 'docx')
@@ -233,17 +386,681 @@ class PDFToolsHelperMethods
     }
 
     /**
-     * Enhanced PDF to Word conversion with better formatting preservation
+     * Enhanced PDF to Word conversion with multiple professional methods
+     * This method tries different approaches to achieve iLovePDF-like quality
      */
     public static function createEnhancedWordFromPdf($inputPath, $outputPath)
     {
-        Log::info('Starting enhanced PDF to Word conversion', [
+        Log::info('Starting enhanced PDF to Word conversion with multiple methods', [
             'input' => $inputPath,
             'output' => $outputPath
         ]);
 
-        // Use the new PhpWord-based method for better compatibility
+        // Method 1: Try LibreOffice with PDF import filter (Highest Quality)
+        try {
+            $result = self::convertPdfToWordWithLibreOffice($inputPath, $outputPath);
+            if ($result) {
+                Log::info('PDF to Word conversion successful using LibreOffice method');
+                return $result;
+            }
+        } catch (\Exception $e) {
+            Log::warning('LibreOffice PDF to Word conversion failed: ' . $e->getMessage());
+        }
+
+        // Method 2: Try PDF2Word with better text extraction and formatting
+        try {
+            $result = self::convertPdfToWordWithAdvancedExtraction($inputPath, $outputPath);
+            if ($result) {
+                Log::info('PDF to Word conversion successful using advanced extraction method');
+                return $result;
+            }
+        } catch (\Exception $e) {
+            Log::warning('Advanced extraction PDF to Word conversion failed: ' . $e->getMessage());
+        }
+
+        // Method 3: Fallback to enhanced manual method
+        Log::info('Using enhanced manual fallback method');
         return self::createSimpleWordFromPdf($inputPath, $outputPath);
+    }
+
+    /**
+     * Advanced PDF to Word conversion with better formatting and structure preservation
+     */
+    public static function convertPdfToWordWithAdvancedExtraction($inputPath, $outputPath)
+    {
+        Log::info('Starting advanced PDF to Word extraction', [
+            'input' => $inputPath,
+            'output' => $outputPath
+        ]);
+
+        try {
+            // Check file size and use appropriate method
+            $fileSize = filesize($inputPath);
+            $isLargePdf = $fileSize > 2 * 1024 * 1024; // > 2MB
+            
+            if ($isLargePdf) {
+                Log::info('Large PDF detected (' . number_format($fileSize / 1024 / 1024, 2) . 'MB), using optimized extraction');
+                return self::convertLargePdfToWord($inputPath, $outputPath);
+            }
+            
+            // Extract structured content from PDF
+            $structuredContent = self::extractStructuredContentFromPdf($inputPath);
+            
+            // Create professional Word document with proper formatting
+            return self::createProfessionalWordDocument($structuredContent, $outputPath, $inputPath);
+            
+        } catch (\Exception $e) {
+            Log::error('Advanced PDF extraction failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * Optimized conversion for large PDFs
+     */
+    private static function convertLargePdfToWord($inputPath, $outputPath)
+    {
+        try {
+            Log::info('Starting optimized large PDF conversion');
+            
+            // Create PhpWord document with minimal processing
+            $phpWord = new \PhpOffice\PhpWord\PhpWord();
+            
+            // Set document properties
+            $properties = $phpWord->getDocInfo();
+            $properties->setCreator('FlexiConvert Professional');
+            $properties->setTitle('Large PDF Conversion');
+            $properties->setDescription('Optimized conversion for large PDF files');
+            
+            // Create main section
+            $section = $phpWord->addSection([
+                'marginTop' => 1440,
+                'marginBottom' => 1440,
+                'marginLeft' => 1440,
+                'marginRight' => 1440
+            ]);
+            
+            // Add header
+            $section->addTitle('Large PDF Document Conversion', 1);
+            $section->addText('Source: ' . basename($inputPath), [
+                'italic' => true,
+                'color' => '666666'
+            ]);
+            $section->addTextBreak(2);
+            
+            // Try to extract basic text first
+            try {
+                $text = self::extractTextFromPdf($inputPath);
+                if (!empty(trim($text)) && strlen($text) > 100) {
+                    $section->addText('This large PDF has been converted with text extraction:', [
+                        'name' => 'Calibri',
+                        'size' => 11,
+                        'color' => '666666'
+                    ]);
+                    $section->addTextBreak();
+                    
+                    // Split text into manageable chunks
+                    $paragraphs = explode("\n\n", $text);
+                    $maxParagraphs = 50; // Limit paragraphs for performance
+                    
+                    foreach (array_slice($paragraphs, 0, $maxParagraphs) as $paragraph) {
+                        if (!empty(trim($paragraph))) {
+                            $section->addText(trim($paragraph), [
+                                'name' => 'Calibri',
+                                'size' => 11
+                            ]);
+                            $section->addTextBreak();
+                        }
+                    }
+                    
+                    if (count($paragraphs) > $maxParagraphs) {
+                        $section->addText('[Content truncated for performance - ' . (count($paragraphs) - $maxParagraphs) . ' more paragraphs available in original PDF]', [
+                            'italic' => true,
+                            'color' => '999999'
+                        ]);
+                    }
+                } else {
+                    // If no text, try limited image extraction
+                    $section->addText('This appears to be an image-based PDF. Extracting sample pages...', [
+                        'name' => 'Calibri',
+                        'size' => 11,
+                        'color' => '666666'
+                    ]);
+                    $section->addTextBreak(2);
+                    
+                    // Extract only first 5 pages as images
+                    $images = self::extractLimitedImagesFromPdf($inputPath, 5);
+                    
+                    if (!empty($images)) {
+                        foreach ($images as $imageInfo) {
+                            if (file_exists($imageInfo['path'])) {
+                                try {
+                                    $section->addTitle('Page ' . $imageInfo['page'], 2);
+                                    $section->addImage($imageInfo['path'], [
+                                        'width' => 400,
+                                        'height' => 300,
+                                        'wrappingStyle' => 'inline'
+                                    ]);
+                                    $section->addTextBreak(2);
+                                } catch (\Exception $e) {
+                                    $section->addText('[Image from page ' . $imageInfo['page'] . ' - processing error]', [
+                                        'italic' => true,
+                                        'color' => '999999'
+                                    ]);
+                                    $section->addTextBreak();
+                                }
+                            }
+                        }
+                        
+                        $section->addTextBreak();
+                        $section->addText('Note: Only the first 5 pages are shown for performance. The original PDF contains more content.', [
+                            'italic' => true,
+                            'color' => '999999',
+                            'size' => 10
+                        ]);
+                    }
+                }
+                
+            } catch (\Exception $e) {
+                Log::warning('Text extraction failed for large PDF: ' . $e->getMessage());
+                
+                $section->addText('This large PDF could not be processed for text extraction.', [
+                    'name' => 'Calibri',
+                    'size' => 11,
+                    'color' => '666666'
+                ]);
+                $section->addTextBreak();
+                
+                $section->addText('File Information:', ['bold' => true]);
+                $section->addText('• File Size: ' . number_format(filesize($inputPath) / 1024 / 1024, 2) . ' MB');
+                $section->addText('• Recommended: Use a smaller PDF or specialized PDF editor for best results');
+                $section->addTextBreak();
+            }
+            
+            // Save the document
+            $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+            $writer->setUseDiskCaching(true);
+            $writer->save($outputPath);
+            
+            $fileSize = filesize($outputPath);
+            Log::info('Large PDF conversion completed', [
+                'output_path' => $outputPath,
+                'file_size' => $fileSize
+            ]);
+            
+            return $outputPath;
+            
+        } catch (\Exception $e) {
+            Log::error('Large PDF conversion failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * Extract limited number of images for performance
+     */
+    private static function extractLimitedImagesFromPdf($pdfPath, $maxPages = 5)
+    {
+        $images = [];
+        
+        try {
+            if (!extension_loaded('imagick')) {
+                return $images;
+            }
+            
+            Log::info("Extracting limited images from large PDF (max {$maxPages} pages)");
+            
+            $imagick = new \Imagick();
+            $imagick->setResolution(100, 100); // Lower resolution for speed
+            $imagick->readImage($pdfPath . '[0-' . ($maxPages - 1) . ']'); // Only read first N pages
+            
+            $pageCount = $imagick->getNumberImages();
+            Log::info("Processing {$pageCount} pages (limited extraction)");
+            
+            $imagick->resetIterator();
+            $pageIndex = 0;
+            
+            foreach ($imagick as $page) {
+                $pageIndex++;
+                
+                try {
+                    $page->setImageFormat('png');
+                    $page->setImageCompressionQuality(90); // Good quality for limited extraction
+                    
+                    // Enhance image for better readability
+                    $page->normalizeImage();
+                    $page->enhanceImage();
+                    
+                    // Resize to reasonable size but maintain quality
+                    $page->resizeImage(1800, 1800, \Imagick::FILTER_LANCZOS, 1, true);
+                    
+                    $tempDir = sys_get_temp_dir();
+                    $tempImagePath = $tempDir . '/pdf_limited_' . $pageIndex . '_' . uniqid() . '.png';
+                    $page->writeImage($tempImagePath);
+                    
+                    $images[] = [
+                        'path' => $tempImagePath,
+                        'page' => $pageIndex,
+                        'width' => $page->getImageWidth(),
+                        'height' => $page->getImageHeight()
+                    ];
+                    
+                } catch (\Exception $pageError) {
+                    Log::warning("Failed to extract limited image from page {$pageIndex}: " . $pageError->getMessage());
+                    continue;
+                }
+            }
+            
+            $imagick->clear();
+            $imagick->destroy();
+            
+            Log::info("Limited image extraction completed: " . count($images) . " images");
+            return $images;
+            
+        } catch (\Exception $e) {
+            Log::error("Limited image extraction failed: " . $e->getMessage());
+            return $images;
+        }
+    }
+
+    /**
+     * Extract structured content from PDF with better formatting preservation
+     */
+    private static function extractStructuredContentFromPdf($pdfPath)
+    {
+        try {
+            $parser = new \Smalot\PdfParser\Parser();
+            $pdf = $parser->parseFile($pdfPath);
+            
+            $structuredContent = [
+                'title' => '',
+                'pages' => [],
+                'images' => [],
+                'metadata' => []
+            ];
+            
+            // Extract metadata
+            $details = $pdf->getDetails();
+            $structuredContent['metadata'] = [
+                'title' => $details['Title'] ?? '',
+                'author' => $details['Author'] ?? '',
+                'subject' => $details['Subject'] ?? '',
+                'creator' => $details['Creator'] ?? ''
+            ];
+            
+            // Extract pages with better structure
+            $pages = $pdf->getPages();
+            foreach ($pages as $pageNumber => $page) {
+                $pageText = $page->getText();
+                
+                // Clean and structure the text
+                $cleanText = self::cleanAndStructureText($pageText);
+                
+                $structuredContent['pages'][] = [
+                    'number' => $pageNumber + 1,
+                    'text' => $cleanText,
+                    'raw_text' => $pageText
+                ];
+            }
+            
+            // Try to extract images
+            try {
+                $structuredContent['images'] = self::extractImagesFromPdf($pdfPath);
+            } catch (\Exception $e) {
+                Log::warning('Image extraction failed: ' . $e->getMessage());
+                $structuredContent['images'] = [];
+            }
+            
+            return $structuredContent;
+            
+        } catch (\Exception $e) {
+            Log::error('Structured PDF extraction failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Clean and structure extracted text for better Word formatting
+     */
+    private static function cleanAndStructureText($text)
+    {
+        // Normalize line endings
+        $text = preg_replace('/\r\n|\r/', "\n", $text);
+        
+        // Remove excessive whitespace but preserve paragraph structure
+        $text = preg_replace('/[ \t]+/', ' ', $text); // Multiple spaces/tabs to single space
+        
+        // Fix common PDF extraction issues
+        $text = str_replace(['ﬁ', 'ﬂ', 'ﬀ', 'ﬃ', 'ﬄ'], ['fi', 'fl', 'ff', 'ffi', 'ffl'], $text); // Fix ligatures
+        
+        // Add proper sentence breaks - this is the key fix for formatting
+        $text = preg_replace('/\.([A-Z])/', '. $1', $text); // Add space after period before capital letter
+        $text = preg_replace('/\?([A-Z])/', '? $1', $text); // Add space after question mark
+        $text = preg_replace('/\!([A-Z])/', '! $1', $text); // Add space after exclamation mark
+        
+        // Fix broken words that span lines (common in PDF extraction)
+        $text = preg_replace('/([a-z])-\s*\n\s*([a-z])/', '$1$2', $text); // Rejoin hyphenated words
+        
+        // Improve paragraph detection - better sentence separation
+        $text = preg_replace('/\. ([A-Z][a-z])/', ".\n\n$1", $text); // New paragraph after sentence
+        $text = preg_replace('/([a-z])\s*\n\s*([A-Z][a-z])/', "$1\n\n$2", $text); // New paragraph detection
+        
+        // Clean up multiple newlines
+        $text = preg_replace('/\n{3,}/', "\n\n", $text); // Max 2 consecutive newlines
+        
+        // Split into lines and structure
+        $lines = explode("\n", $text);
+        $structuredLines = [];
+        
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (empty($line)) continue;
+            
+            // Detect headings with improved patterns
+            $isHeading = false;
+            
+            // Pattern 1: Short lines with all caps or title case
+            if (strlen($line) < 80 && preg_match('/^[A-Z][A-Z\s\d\.\-]+$/', $line)) {
+                $isHeading = true;
+            }
+            
+            // Pattern 2: Numbered headings
+            if (preg_match('/^\d+\.\s+[A-Z]/', $line) || preg_match('/^[IVX]+\.\s+[A-Z]/', $line)) {
+                $isHeading = true;
+            }
+            
+            // Pattern 3: Common heading patterns
+            if (preg_match('/^(BAB|CHAPTER|BAGIAN|PART|SECTION)\s+[IVX\d]/i', $line)) {
+                $isHeading = true;
+            }
+            
+            if ($isHeading) {
+                $structuredLines[] = ['type' => 'heading', 'content' => $line];
+            } else {
+                // Split long paragraphs into sentences for better readability
+                if (strlen($line) > 300) {
+                    $sentences = preg_split('/(?<=[.!?])\s+(?=[A-Z])/', $line);
+                    foreach ($sentences as $sentence) {
+                        $sentence = trim($sentence);
+                        if (!empty($sentence)) {
+                            $structuredLines[] = ['type' => 'paragraph', 'content' => $sentence];
+                        }
+                    }
+                } else {
+                    $structuredLines[] = ['type' => 'paragraph', 'content' => $line];
+                }
+            }
+        }
+        
+        return $structuredLines;
+    }
+
+    /**
+     * Create a professional Word document with proper formatting
+     */
+    private static function createProfessionalWordDocument($structuredContent, $outputPath, $inputPath)
+    {
+        try {
+            Log::info('Creating professional Word document', [
+                'output_path' => $outputPath,
+                'pages_count' => count($structuredContent['pages']),
+                'has_images' => !empty($structuredContent['images'])
+            ]);
+
+            // Ensure output directory exists
+            $outputDir = dirname($outputPath);
+            if (!file_exists($outputDir)) {
+                mkdir($outputDir, 0755, true);
+            }
+
+            // Create PhpWord document with professional settings
+            $phpWord = new \PhpOffice\PhpWord\PhpWord();
+            
+            // Set document properties
+            $properties = $phpWord->getDocInfo();
+            $properties->setCreator('FlexiConvert Professional');
+            $properties->setTitle($structuredContent['metadata']['title'] ?: 'PDF to Word Conversion');
+            $properties->setDescription('Converted from PDF using FlexiConvert advanced engine');
+            
+            // Define professional styles
+            $phpWord->addTitleStyle(1, [
+                'name' => 'Calibri',
+                'size' => 16,
+                'bold' => true,
+                'color' => '2E74B5'
+            ]);
+            
+            $phpWord->addTitleStyle(2, [
+                'name' => 'Calibri',
+                'size' => 14,
+                'bold' => true,
+                'color' => '365F91'
+            ]);
+            
+            // Create main section with professional margins
+            $section = $phpWord->addSection([
+                'marginTop' => 1440,    // 1 inch
+                'marginBottom' => 1440, // 1 inch
+                'marginLeft' => 1440,   // 1 inch
+                'marginRight' => 1440   // 1 inch
+            ]);
+            
+            // Check if this is an image-heavy PDF
+            $totalTextLength = 0;
+            foreach ($structuredContent['pages'] as $pageData) {
+                if (is_array($pageData['text'])) {
+                    foreach ($pageData['text'] as $element) {
+                        $totalTextLength += strlen($element['content'] ?? '');
+                    }
+                } else {
+                    $totalTextLength += strlen($pageData['text'] ?? '');
+                }
+            }
+            
+            $isImageHeavyPdf = $totalTextLength < 500 && !empty($structuredContent['images']);
+            
+            if ($isImageHeavyPdf) {
+                // For image-heavy PDFs, focus on images with minimal text
+                $section->addTitle('Document Conversion - Image-Based PDF', 1);
+                $section->addText('Source: ' . basename($inputPath), [
+                    'italic' => true,
+                    'color' => '666666'
+                ]);
+                $section->addTextBreak();
+                
+                $section->addText('This PDF contains primarily images with minimal text content. The images have been extracted and included below.', [
+                    'name' => 'Calibri',
+                    'size' => 11,
+                    'color' => '666666'
+                ]);
+                $section->addTextBreak(2);
+                
+                // Add all images with page references
+                if (!empty($structuredContent['images'])) {
+                    foreach ($structuredContent['images'] as $index => $imageInfo) {
+                        if (file_exists($imageInfo['path'])) {
+                            try {
+                                $section->addTitle('Page ' . $imageInfo['page'], 2);
+                                $section->addTextBreak();
+                                
+                                // Calculate optimal image dimensions
+                                $imageSize = getimagesize($imageInfo['path']);
+                                if ($imageSize) {
+                                    $originalWidth = $imageSize[0];
+                                    $originalHeight = $imageSize[1];
+                                    $aspectRatio = $originalWidth / $originalHeight;
+                                    
+                                    // Set maximum dimensions for Word document
+                                    $maxWidth = 550;  // Wider for better readability
+                                    $maxHeight = 700;
+                                    
+                                    if ($aspectRatio > 1) {
+                                        // Landscape orientation
+                                        $displayWidth = min($maxWidth, $originalWidth * 0.8);
+                                        $displayHeight = $displayWidth / $aspectRatio;
+                                    } else {
+                                        // Portrait orientation
+                                        $displayHeight = min($maxHeight, $originalHeight * 0.8);
+                                        $displayWidth = $displayHeight * $aspectRatio;
+                                    }
+                                    
+                                    $section->addImage($imageInfo['path'], [
+                                        'width' => $displayWidth,
+                                        'height' => $displayHeight,
+                                        'wrappingStyle' => 'inline',
+                                        'positioning' => 'relative'
+                                    ]);
+                                } else {
+                                    // Fallback if image size cannot be determined
+                                    $section->addImage($imageInfo['path'], [
+                                        'width' => 500,
+                                        'height' => 600,
+                                        'wrappingStyle' => 'inline'
+                                    ]);
+                                }
+                                
+                                $section->addTextBreak();
+                                $section->addText('Original size: ' . $imageInfo['width'] . 'x' . $imageInfo['height'] . ' pixels', [
+                                    'size' => 9,
+                                    'italic' => true,
+                                    'color' => '999999'
+                                ]);
+                                $section->addTextBreak(2);
+                                
+                                Log::info('Added full-size image from page ' . $imageInfo['page']);
+                                
+                            } catch (\Exception $e) {
+                                Log::warning('Failed to add image from page ' . $imageInfo['page'] . ': ' . $e->getMessage());
+                                
+                                // Add placeholder
+                                $section->addText('[Image from page ' . $imageInfo['page'] . ' - ' . $imageInfo['width'] . 'x' . $imageInfo['height'] . ' pixels]', [
+                                    'italic' => true,
+                                    'color' => '999999',
+                                    'name' => 'Calibri',
+                                    'size' => 11
+                                ]);
+                                $section->addTextBreak();
+                            }
+                        }
+                    }
+                }
+                
+                // Add any extracted text at the end
+                if ($totalTextLength > 0) {
+                    $section->addPageBreak();
+                    $section->addTitle('Extracted Text Content', 2);
+                    $section->addTextBreak();
+                    
+                    foreach ($structuredContent['pages'] as $pageData) {
+                        if (is_array($pageData['text'])) {
+                            foreach ($pageData['text'] as $element) {
+                                if (!empty(trim($element['content'] ?? ''))) {
+                                    $section->addText($element['content'], [
+                                        'name' => 'Calibri',
+                                        'size' => 11
+                                    ]);
+                                    $section->addTextBreak();
+                                }
+                            }
+                        } else if (!empty(trim($pageData['text'] ?? ''))) {
+                            $section->addText($pageData['text'], [
+                                'name' => 'Calibri',
+                                'size' => 11
+                            ]);
+                            $section->addTextBreak();
+                        }
+                    }
+                }
+                
+            } else {
+                // For text-heavy PDFs, focus on text with images as supplements
+                $section->addTitle('PDF to Word Conversion', 1);
+                $section->addText('Source: ' . basename($inputPath), [
+                    'italic' => true,
+                    'color' => '666666'
+                ]);
+                $section->addTextBreak(2);
+                
+                // Process each page
+                foreach ($structuredContent['pages'] as $pageData) {
+                    if ($pageData['number'] > 1) {
+                        $section->addPageBreak();
+                    }
+                    
+                    $section->addTitle('Page ' . $pageData['number'], 2);
+                    $section->addTextBreak();
+                    
+                    // Add structured content
+                    if (is_array($pageData['text'])) {
+                        foreach ($pageData['text'] as $element) {
+                            if ($element['type'] === 'heading') {
+                                $section->addText($element['content'], [
+                                    'name' => 'Calibri',
+                                    'size' => 12,
+                                    'bold' => true,
+                                    'color' => '2E74B5'
+                                ]);
+                            } else {
+                                $section->addText($element['content'], [
+                                    'name' => 'Calibri',
+                                    'size' => 11
+                                ]);
+                            }
+                            $section->addTextBreak();
+                        }
+                    } else {
+                        // Fallback for simple text
+                        $paragraphs = explode("\n\n", $pageData['text']);
+                        foreach ($paragraphs as $paragraph) {
+                            if (!empty(trim($paragraph))) {
+                                $section->addText(trim($paragraph), [
+                                    'name' => 'Calibri',
+                                    'size' => 11
+                                ]);
+                                $section->addTextBreak();
+                            }
+                        }
+                    }
+                }
+                
+                // Add images if available
+                if (!empty($structuredContent['images'])) {
+                    $section->addPageBreak();
+                    $section->addTitle('Images from PDF', 2);
+                    $section->addTextBreak();
+                    
+                    self::addImagesToWordDocument($section, $structuredContent['images']);
+                }
+            }
+            
+            // Save the document
+            $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+            $writer->setUseDiskCaching(true);
+            $writer->save($outputPath);
+            
+            $fileSize = filesize($outputPath);
+            Log::info('Professional Word document created successfully', [
+                'output_path' => $outputPath,
+                'file_size' => $fileSize,
+                'format' => 'docx',
+                'is_image_heavy' => $isImageHeavyPdf,
+                'total_text_length' => $totalTextLength
+            ]);
+            
+            // For image-heavy PDFs, accept smaller file sizes as normal
+            $minFileSize = $isImageHeavyPdf ? 5000 : 15000;
+            
+            if ($fileSize > $minFileSize) {
+                return $outputPath;
+            } else {
+                Log::warning('Generated file may be too small: ' . $fileSize . ' bytes (min expected: ' . $minFileSize . ')');
+                return $outputPath; // Still return it, but log the warning
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('Professional Word document creation failed: ' . $e->getMessage());
+            throw $e;
+        }
     }
 
     /**
@@ -577,6 +1394,8 @@ class PDFToolsHelperMethods
         }
     }
 
+
+
     /**
      * Extract text from PDF with better structure preservation
      */
@@ -665,7 +1484,7 @@ class PDFToolsHelperMethods
         $section->addTextBreak();
         
         $addedImages = 0;
-        $maxImages = 3; // Limit images to prevent document corruption
+        $maxImages = min(count($images), 15); // Allow more images but with reasonable limit
         
         foreach ($images as $index => $imageInfo) {
             if ($addedImages >= $maxImages) {
@@ -678,61 +1497,79 @@ class PDFToolsHelperMethods
             
             if (file_exists($imageInfo['path'])) {
                 try {
-                    // Validate image file
+                    // Verify image file is valid
                     $imageSize = getimagesize($imageInfo['path']);
-                    if ($imageSize === false) {
-                        Log::warning('Invalid image file: ' . $imageInfo['path']);
-                        continue;
+                    if (!$imageSize) {
+                        throw new \Exception('Invalid image file');
                     }
                     
-                    // Check file size (limit to 2MB per image)
-                    $fileSize = filesize($imageInfo['path']);
-                    if ($fileSize > 2 * 1024 * 1024) {
-                        Log::warning('Image too large, skipping: ' . $fileSize . ' bytes');
-                        continue;
+                    // Calculate optimal dimensions for Word document - smaller for multiple images
+                    $maxWidth = 400;  // Reduced width for better performance
+                    $maxHeight = 500; // Reduced height for better performance
+                    
+                    $originalWidth = $imageSize[0];
+                    $originalHeight = $imageSize[1];
+                    $aspectRatio = $originalWidth / $originalHeight;
+                    
+                    // Use smaller scaling factor for multiple images
+                    $scaleFactor = count($images) > 5 ? 0.6 : 0.75;
+                    
+                    if ($aspectRatio > 1) {
+                        // Landscape
+                        $displayWidth = min($maxWidth, $originalWidth * $scaleFactor);
+                        $displayHeight = $displayWidth / $aspectRatio;
+                    } else {
+                        // Portrait
+                        $displayHeight = min($maxHeight, $originalHeight * $scaleFactor);
+                        $displayWidth = $displayHeight * $aspectRatio;
                     }
                     
-                    // Add image with conservative sizing
+                    // Add image with calculated dimensions
                     $section->addImage($imageInfo['path'], [
-                        'width' => 300, // Fixed width to prevent layout issues
-                        'height' => 200, // Fixed height
-                        'wrappingStyle' => 'inline'
+                        'width' => $displayWidth,
+                        'height' => $displayHeight,
+                        'wrappingStyle' => 'inline',
+                        'positioning' => 'relative',
+                        'marginTop' => 0,
+                        'marginLeft' => 0
                     ]);
                     
-                    $section->addText('Page ' . ($imageInfo['page'] ?? ($index + 1)), [
+                    $section->addTextBreak();
+                    $section->addText('Page ' . $imageInfo['page'] . ' (' . $originalWidth . 'x' . $originalHeight . ' pixels)', [
                         'size' => 9,
                         'italic' => true,
-                        'color' => '666666'
+                        'color' => '666666',
+                        'name' => 'Calibri'
                     ]);
-                    $section->addTextBreak();
+                    $section->addTextBreak(2);
                     
                     $addedImages++;
-                    Log::info('Successfully added image ' . ($addedImages) . ' to Word document');
+                    Log::info('Successfully added image ' . ($index + 1) . ' to Word document', [
+                        'original_size' => $originalWidth . 'x' . $originalHeight,
+                        'display_size' => round($displayWidth) . 'x' . round($displayHeight)
+                    ]);
                     
                 } catch (\Exception $e) {
-                    Log::warning('Failed to add image from page ' . ($imageInfo['page'] ?? ($index + 1)) . ': ' . $e->getMessage());
+                    Log::warning('Failed to add image ' . ($index + 1) . ': ' . $e->getMessage());
                     
                     // Add placeholder text instead
-                    $section->addText('[Image from page ' . ($imageInfo['page'] ?? ($index + 1)) . ' could not be displayed]', [
+                    $section->addText('[Image from page ' . $imageInfo['page'] . ' could not be embedded - ' . $e->getMessage() . ']', [
                         'italic' => true,
-                        'color' => '999999'
+                        'color' => 'CC0000',
+                        'name' => 'Calibri',
+                        'size' => 10
                     ]);
                     $section->addTextBreak();
                 }
-            }
-        }
-        
-        if ($addedImages === 0) {
-            $section->addText('Images could not be processed from the PDF.', [
-                'italic' => true,
-                'color' => '999999'
-            ]);
-        }
-        
-        // Clean up image files
-        foreach ($images as $imageInfo) {
-            if (file_exists($imageInfo['path'])) {
-                @unlink($imageInfo['path']);
+            } else {
+                Log::warning('Image file not found: ' . $imageInfo['path']);
+                $section->addText('[Image from page ' . $imageInfo['page'] . ' - file not found]', [
+                    'italic' => true,
+                    'color' => 'CC0000',
+                    'name' => 'Calibri',
+                    'size' => 10
+                ]);
+                $section->addTextBreak();
             }
         }
         
@@ -2479,33 +3316,79 @@ class PDFToolsHelperMethods
                 return $images;
             }
             
+            // Set generous time limits for large PDFs
+            $originalTimeLimit = ini_get('max_execution_time');
+            ini_set('max_execution_time', 300); // 5 minutes
+            ini_set('memory_limit', '2G');
+            
             Log::info("Extracting images from PDF: " . basename($pdfPath));
+            $startTime = microtime(true);
             
             $imagick = new \Imagick();
-            $imagick->setResolution(150, 150); // Good quality for Word documents
+            $imagick->setResolution(120, 120); // Reduced resolution for faster processing
             $imagick->readImage($pdfPath);
             
             $pageCount = $imagick->getNumberImages();
             Log::info("Processing {$pageCount} pages for image extraction");
             
+            // For very large documents, limit pages to prevent timeout
+            $maxPages = 20; // Process max 20 pages
+            if ($pageCount > $maxPages) {
+                Log::warning("PDF has {$pageCount} pages, limiting to {$maxPages} pages for performance");
+                $pageCount = $maxPages;
+            }
+            
             $imagick->resetIterator();
             $pageIndex = 0;
+            $processedPages = 0;
             
             foreach ($imagick as $page) {
                 $pageIndex++;
                 
+                // Stop if we've reached the page limit
+                if ($processedPages >= $maxPages) {
+                    break;
+                }
+                
+                // Check execution time every 5 pages
+                if ($pageIndex % 5 === 0) {
+                    $elapsedTime = microtime(true) - $startTime;
+                    if ($elapsedTime > 240) { // 4 minutes
+                        Log::warning("Image extraction taking too long ({$elapsedTime}s), stopping at page {$pageIndex}");
+                        break;
+                    }
+                }
+                
                 try {
-                    // Convert page to PNG for better quality in Word
+                    // Use PNG for better quality and compatibility with Word
                     $page->setImageFormat('png');
+                    $page->setImageCompressionQuality(95); // High quality for better text readability
                     
-                    // Create temporary file
+                    // Get original dimensions
+                    $width = $page->getImageWidth();
+                    $height = $page->getImageHeight();
+                    
+                    // Only resize if extremely large to maintain quality
+                    if ($width > 3000 || $height > 3000) {
+                        $page->resizeImage(2400, 2400, \Imagick::FILTER_LANCZOS, 1, true);
+                        $width = $page->getImageWidth();
+                        $height = $page->getImageHeight();
+                        Log::info("Resized very large image from page {$pageIndex} to {$width}x{$height}");
+                    }
+                    
+                    // Enhance image for better text readability
+                    $page->normalizeImage();
+                    $page->enhanceImage();
+                    
+                    // Create temporary file with PNG format
                     $tempDir = sys_get_temp_dir();
                     $tempImagePath = $tempDir . '/pdf_image_' . $pageIndex . '_' . uniqid() . '.png';
                     $page->writeImage($tempImagePath);
                     
-                    // Get image dimensions
-                    $width = $page->getImageWidth();
-                    $height = $page->getImageHeight();
+                    // Verify the image was created successfully
+                    if (!file_exists($tempImagePath) || filesize($tempImagePath) < 1000) {
+                        throw new \Exception('Generated image file is too small or missing');
+                    }
                     
                     $images[] = [
                         'path' => $tempImagePath,
@@ -2514,7 +3397,11 @@ class PDFToolsHelperMethods
                         'height' => $height
                     ];
                     
-                    Log::info("Extracted image from page {$pageIndex}: {$width}x{$height}");
+                    $processedPages++;
+                    
+                    if ($pageIndex % 3 === 0) { // Log every 3 pages
+                        Log::info("Processed {$processedPages} pages so far...");
+                    }
                     
                 } catch (\Exception $pageError) {
                     Log::warning("Failed to extract image from page {$pageIndex}: " . $pageError->getMessage());
@@ -2525,11 +3412,22 @@ class PDFToolsHelperMethods
             $imagick->clear();
             $imagick->destroy();
             
-            Log::info("Image extraction completed: " . count($images) . " images extracted");
+            $totalTime = microtime(true) - $startTime;
+            Log::info("Image extraction completed: " . count($images) . " images extracted in {$totalTime}s");
+            
+            // Restore original time limit
+            ini_set('max_execution_time', $originalTimeLimit);
+            
             return $images;
             
         } catch (\Exception $e) {
             Log::error("Image extraction failed: " . $e->getMessage());
+            
+            // Restore original time limit
+            if (isset($originalTimeLimit)) {
+                ini_set('max_execution_time', $originalTimeLimit);
+            }
+            
             return $images;
         }
     }
@@ -2931,56 +3829,222 @@ class PDFToolsHelperMethods
         }
 
         try {
+            Log::info('Creating PowerPoint document from PDF', [
+                'output_path' => $outputPath,
+                'original_path' => basename($originalPath)
+            ]);
+
+            // Try to extract text first for better PowerPoint conversion
+            $structuredContent = self::extractStructuredContentFromPdf($originalPath);
+            $images = $structuredContent['images'] ?? [];
+            $textPages = $structuredContent['pages'] ?? [];
+            
             $presentation = new \PhpOffice\PhpPresentation\PhpPresentation();
-            $slide = $presentation->getActiveSlide();
             
-            // Title slide
-            $titleShape = $slide->createRichTextShape();
-            $titleShape->setHeight(100)
-                      ->setWidth(800)
-                      ->setOffsetX(100)
-                      ->setOffsetY(100);
+            // Remove default slide
+            $presentation->removeSlideByIndex(0);
             
-            $titleParagraph = $titleShape->createParagraph();
-            $titleRun = $titleParagraph->createTextRun('Converted Document');
-            $titleRun->getFont()->setBold(true)->setSize(24);
-            
-            // Content with better formatting
-            $contentShape = $slide->createRichTextShape();
-            $contentShape->setHeight(400)
-                        ->setWidth(800)
-                        ->setOffsetX(100)
-                        ->setOffsetY(250);
-            
-            // Split content into slides if too long
-            $lines = explode("\n", $textContent);
-            $linesPerSlide = 15;
-            $chunks = array_chunk($lines, $linesPerSlide);
-            
-            foreach ($chunks as $index => $chunk) {
-                if ($index > 0) {
-                    $slide = $presentation->createSlide();
-                    $contentShape = $slide->createRichTextShape();
-                    $contentShape->setHeight(500)
-                                ->setWidth(800)
-                                ->setOffsetX(100)
-                                ->setOffsetY(100);
+            // Check if we have meaningful text content
+            $totalTextLength = 0;
+            foreach ($textPages as $pageData) {
+                if (is_array($pageData['text'])) {
+                    foreach ($pageData['text'] as $element) {
+                        $totalTextLength += strlen($element['content'] ?? '');
+                    }
+                } else {
+                    $totalTextLength += strlen($pageData['text'] ?? '');
                 }
-                
-                $contentParagraph = $contentShape->createParagraph();
-                $slideContent = implode("\n", array_filter($chunk, 'trim'));
-                $contentRun = $contentParagraph->createTextRun($slideContent);
-                $contentRun->getFont()->setSize(12);
             }
             
+            $hasSignificantText = $totalTextLength > 200; // More than 200 characters
+            
+            Log::info('PowerPoint conversion analysis', [
+                'total_text_length' => $totalTextLength,
+                'has_significant_text' => $hasSignificantText,
+                'image_count' => count($images),
+                'page_count' => count($textPages)
+            ]);
+            
+            if ($hasSignificantText && !empty($textPages)) {
+                // Text-based approach with extracted text
+                Log::info('Creating text-based PowerPoint slides with extracted content');
+                
+                foreach ($textPages as $pageIndex => $pageData) {
+                    $slide = $presentation->createSlide();
+                    $slide->setName('Slide ' . ($pageIndex + 1));
+                    
+                    // Create main content area - full slide
+                    $contentShape = $slide->createRichTextShape();
+                    $contentShape->setHeight(540) // Full slide height
+                                ->setWidth(960)  // Full slide width
+                                ->setOffsetX(0)  // Start from left edge
+                                ->setOffsetY(0); // Start from top edge
+                    
+                    // Process page text
+                    if (is_array($pageData['text'])) {
+                        foreach ($pageData['text'] as $element) {
+                            $paragraph = $contentShape->createParagraph();
+                            $textRun = $paragraph->createTextRun($element['content']);
+                            
+                            if ($element['type'] === 'heading') {
+                                $textRun->getFont()->setBold(true)->setSize(18);
+                                $paragraph->getAlignment()->setMarginTop(10);
+                            } else {
+                                $textRun->getFont()->setSize(14);
+                                $paragraph->getAlignment()->setMarginTop(5);
+                            }
+                        }
+                    } else {
+                        // Simple text content
+                        $cleanText = self::cleanAndStructureText($pageData['text']);
+                        foreach ($cleanText as $element) {
+                            $paragraph = $contentShape->createParagraph();
+                            $textRun = $paragraph->createTextRun($element['content']);
+                            
+                            if ($element['type'] === 'heading') {
+                                $textRun->getFont()->setBold(true)->setSize(18);
+                                $paragraph->getAlignment()->setMarginTop(10);
+                            } else {
+                                $textRun->getFont()->setSize(14);
+                                $paragraph->getAlignment()->setMarginTop(5);
+                            }
+                        }
+                    }
+                }
+                
+            } elseif (!empty($images)) {
+                // Image-based approach with full-size images
+                Log::info('Creating image-based PowerPoint slides with full-size images');
+                
+                foreach ($images as $index => $imageInfo) {
+                    if (!file_exists($imageInfo['path'])) {
+                        continue;
+                    }
+                    
+                    try {
+                        $slide = $presentation->createSlide();
+                        $slide->setName('Slide ' . ($index + 1));
+                        
+                        // Add image - FULL SLIDE SIZE
+                        $imageShape = $slide->createDrawingShape();
+                        $imageShape->setName('Slide ' . ($index + 1) . ' Content')
+                                  ->setDescription('PDF page ' . $imageInfo['page'])
+                                  ->setPath($imageInfo['path']);
+                        
+                        // Use FULL slide dimensions
+                        $slideWidth = 960;  // Standard PowerPoint slide width
+                        $slideHeight = 540; // Standard PowerPoint slide height
+                        
+                        $originalWidth = $imageInfo['width'];
+                        $originalHeight = $imageInfo['height'];
+                        $aspectRatio = $originalWidth / $originalHeight;
+                        $slideAspectRatio = $slideWidth / $slideHeight;
+                        
+                        if ($aspectRatio > $slideAspectRatio) {
+                            // Image is wider - fit to width
+                            $displayWidth = $slideWidth;
+                            $displayHeight = $slideWidth / $aspectRatio;
+                            $offsetX = 0;
+                            $offsetY = ($slideHeight - $displayHeight) / 2;
+                        } else {
+                            // Image is taller - fit to height
+                            $displayHeight = $slideHeight;
+                            $displayWidth = $slideHeight * $aspectRatio;
+                            $offsetX = ($slideWidth - $displayWidth) / 2;
+                            $offsetY = 0;
+                        }
+                        
+                        $imageShape->setWidth($displayWidth)
+                                  ->setHeight($displayHeight)
+                                  ->setOffsetX($offsetX)
+                                  ->setOffsetY($offsetY);
+                        
+                        Log::info('Added full-size image to PowerPoint slide', [
+                            'slide' => $index + 1,
+                            'original_size' => $originalWidth . 'x' . $originalHeight,
+                            'display_size' => round($displayWidth) . 'x' . round($displayHeight),
+                            'position' => round($offsetX) . ',' . round($offsetY)
+                        ]);
+                        
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to add image to PowerPoint slide', [
+                            'slide' => $index + 1,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+            } else {
+                // Fallback: simple text slides
+                Log::info('Creating fallback text-based PowerPoint slides');
+                
+                $cleanText = self::cleanAndStructureText($textContent);
+                $linesPerSlide = 15; // More lines per slide
+                $currentSlide = null;
+                $currentShape = null;
+                $lineCount = 0;
+                
+                foreach ($cleanText as $element) {
+                    if ($lineCount == 0 || $lineCount >= $linesPerSlide) {
+                        // Create new slide
+                        $currentSlide = $presentation->createSlide();
+                        $currentSlide->setName('Slide ' . count($presentation->getAllSlides()));
+                        
+                        $currentShape = $currentSlide->createRichTextShape();
+                        $currentShape->setHeight(540) // Full slide height
+                                    ->setWidth(960)  // Full slide width
+                                    ->setOffsetX(0)  // Start from left edge
+                                    ->setOffsetY(0); // Start from top edge
+                        
+                        $lineCount = 0;
+                    }
+                    
+                    $paragraph = $currentShape->createParagraph();
+                    $textRun = $paragraph->createTextRun($element['content']);
+                    
+                    if ($element['type'] === 'heading') {
+                        $textRun->getFont()->setBold(true)->setSize(18);
+                        $paragraph->getAlignment()->setMarginTop(10);
+                    } else {
+                        $textRun->getFont()->setSize(14);
+                        $paragraph->getAlignment()->setMarginTop(5);
+                    }
+                    
+                    $lineCount++;
+                }
+            }
+            
+            // Set presentation properties
+            $properties = $presentation->getDocumentProperties();
+            $properties->setCreator('FlexiConvert')
+                      ->setTitle('PDF Conversion')
+                      ->setDescription('Converted from PDF')
+                      ->setSubject('Document Conversion');
+            
+            // Save presentation
             $writer = \PhpOffice\PhpPresentation\IOFactory::createWriter($presentation, 'PowerPoint2007');
             $writer->save($outputPath);
             
-            \Log::info("PowerPoint document created successfully: " . basename($outputPath));
+            // Clean up temporary images
+            if (!empty($images)) {
+                foreach ($images as $imageInfo) {
+                    if (file_exists($imageInfo['path'])) {
+                        @unlink($imageInfo['path']);
+                    }
+                }
+            }
+            
+            $fileSize = filesize($outputPath);
+            Log::info("PowerPoint document created successfully", [
+                'output_path' => basename($outputPath),
+                'file_size' => $fileSize,
+                'slides_count' => count($presentation->getAllSlides()),
+                'approach' => $hasSignificantText ? 'text-based' : 'image-based'
+            ]);
+            
             return $outputPath;
             
         } catch (\Exception $e) {
-            \Log::error("PowerPoint document creation failed: " . $e->getMessage());
+            Log::error("PowerPoint document creation failed: " . $e->getMessage());
             throw new \Exception("Gagal membuat dokumen PowerPoint: " . $e->getMessage());
         }
     }

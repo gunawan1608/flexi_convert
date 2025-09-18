@@ -717,6 +717,11 @@ class PDFToolsController extends Controller
     {
         $processing = null;
         try {
+            // Set generous time limits for large PDFs
+            $originalTimeLimit = ini_get('max_execution_time');
+            ini_set('max_execution_time', 600); // 10 minutes for large PDFs
+            ini_set('memory_limit', '2G');
+            
             $inputPath = $file->store('pdf-tools/uploads');
             $fullInputPath = Storage::path($inputPath);
             
@@ -740,42 +745,28 @@ class PDFToolsController extends Controller
                 mkdir($outputDir, 0755, true);
             }
 
-            try {
-                $convertedDocxPath = PDFToolsHelperMethods::convertPdfToOfficeWithLibreOffice($fullInputPath, $outputDir, 'docx');
+            // Use the new enhanced multi-method conversion approach
+            $finalPath = Storage::path($outputPath);
+            $createdFilePath = PDFToolsHelperMethods::createEnhancedWordFromPdf($fullInputPath, $finalPath);
+            
+            // Check if the created file has a different extension (RTF)
+            if (pathinfo($createdFilePath, PATHINFO_EXTENSION) === 'rtf') {
+                // Update the processing record to reflect RTF format
+                $rtfFileName = str_replace('.docx', '.rtf', $outputFileName);
+                $processing->update([
+                    'processed_filename' => $rtfFileName
+                ]);
                 
-                $finalPath = Storage::path($outputPath);
-                rename($convertedDocxPath, $finalPath);
+                // Update output path for final processing
+                $outputPath = 'pdf-tools/outputs/' . $rtfFileName;
+                $outputFileName = $rtfFileName;
                 
-                Log::info('PDF to Word conversion successful using LibreOffice');
-            } catch (\Exception $e) {
-                if (strpos($e->getMessage(), 'LibreOffice_PDF_Conversion_Failed') !== false) {
-                    Log::info('LibreOffice failed, falling back to enhanced manual PDF to Word conversion');
-                    
-                    // Fallback to enhanced manual conversion
-                    $createdFilePath = PDFToolsHelperMethods::createEnhancedWordFromPdf($fullInputPath, Storage::path($outputPath));
-                    
-                    // Check if the created file has a different extension (RTF)
-                    if (pathinfo($createdFilePath, PATHINFO_EXTENSION) === 'rtf') {
-                        // Update the processing record to reflect RTF format
-                        $rtfFileName = str_replace('.docx', '.rtf', $outputFileName);
-                        $processing->update([
-                            'processed_filename' => $rtfFileName
-                        ]);
-                        
-                        // Update output path for final processing
-                        $outputPath = 'pdf-tools/outputs/' . $rtfFileName;
-                        $outputFileName = $rtfFileName;
-                        
-                        Log::info('Updated processing record for RTF format', [
-                            'new_filename' => $rtfFileName
-                        ]);
-                    }
-                    
-                    Log::info('PDF to Word conversion completed using enhanced manual fallback method');
-                } else {
-                    throw $e;
-                }
+                Log::info('Updated processing record for RTF format', [
+                    'new_filename' => $rtfFileName
+                ]);
             }
+            
+            Log::info('PDF to Word conversion completed using enhanced multi-method approach');
             
             Storage::delete($inputPath);
             
@@ -785,9 +776,17 @@ class PDFToolsController extends Controller
                 'completed_at' => now()
             ]);
 
+            // Restore original time limit
+            ini_set('max_execution_time', $originalTimeLimit);
+
             return PDFToolsHelperMethods::createSuccessResponse('PDF berhasil dikonversi ke Word', $processing->id, $outputFileName, route('pdf-tools.download', $processing->id));
 
         } catch (\Exception $e) {
+            // Restore original time limit
+            if (isset($originalTimeLimit)) {
+                ini_set('max_execution_time', $originalTimeLimit);
+            }
+            
             if ($processing) {
                 $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
             }
