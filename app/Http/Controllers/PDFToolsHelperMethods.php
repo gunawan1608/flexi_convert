@@ -128,6 +128,621 @@ class PDFToolsHelperMethods
     }
 
     /**
+     * Convert PDF to Office format using alternative approach since LibreOffice PDF import is limited
+     */
+    public static function convertPdfToOfficeWithLibreOffice($inputPath, $outputDir, $targetFormat = 'docx')
+    {
+        Log::info('Starting enhanced PDF to Office conversion', [
+            'input_path' => $inputPath,
+            'target_format' => $targetFormat
+        ]);
+
+        // LibreOffice has limited PDF import capabilities, so we'll use a hybrid approach
+        // 1. Try LibreOffice direct conversion first
+        // 2. If that fails, use enhanced text extraction with better formatting
+        
+        $libreOfficePath = self::findLibreOffice();
+        if (!$libreOfficePath) {
+            Log::warning('LibreOffice not found, using enhanced manual conversion');
+            throw new Exception('LibreOffice_PDF_Conversion_Failed');
+        }
+
+        // Create a unique subdirectory within the output directory
+        $uniqueSubDir = $outputDir . DIRECTORY_SEPARATOR . 'libreoffice_pdf_' . uniqid();
+        if (!mkdir($uniqueSubDir, 0755, true)) {
+            throw new Exception('Failed to create unique temp directory: ' . $uniqueSubDir);
+        }
+
+        try {
+            // Try direct LibreOffice conversion with PDF import filter
+            $command = [
+                $libreOfficePath,
+                '--headless',
+                '--invisible',
+                '--convert-to',
+                $targetFormat . ':writer_pdf_import',
+                '--outdir',
+                $uniqueSubDir,
+                $inputPath
+            ];
+
+            Log::info('Attempting LibreOffice PDF conversion', [
+                'command' => implode(' ', $command)
+            ]);
+
+            $env = $_ENV;
+            if (PHP_OS_FAMILY === 'Windows') {
+                $env['HOME'] = sys_get_temp_dir();
+                $env['TMPDIR'] = sys_get_temp_dir();
+            }
+
+            $process = new Process($command);
+            $process->setTimeout(60);
+            $process->run(null, $env);
+
+            // Check for generated files
+            $generatedFiles = glob($uniqueSubDir . DIRECTORY_SEPARATOR . '*.' . $targetFormat);
+            
+            // Also check input directory (LibreOffice sometimes outputs there)
+            $inputDir = dirname($inputPath);
+            $inputBasename = pathinfo($inputPath, PATHINFO_FILENAME);
+            $inputDirFile = $inputDir . DIRECTORY_SEPARATOR . $inputBasename . '.' . $targetFormat;
+            
+            if (file_exists($inputDirFile)) {
+                $generatedFiles[] = $inputDirFile;
+            }
+
+            Log::info('LibreOffice conversion attempt result', [
+                'exit_code' => $process->getExitCode(),
+                'generated_files' => $generatedFiles,
+                'output' => $process->getOutput(),
+                'error' => $process->getErrorOutput()
+            ]);
+
+            if (!empty($generatedFiles)) {
+                // Success! Move file to final location
+                $convertedFile = $generatedFiles[0];
+                $finalFileName = 'converted_' . Str::uuid() . '.' . $targetFormat;
+                $finalPath = $outputDir . DIRECTORY_SEPARATOR . $finalFileName;
+                
+                if (rename($convertedFile, $finalPath)) {
+                    Log::info('LibreOffice PDF conversion successful', [
+                        'final_path' => $finalPath,
+                        'file_size' => filesize($finalPath)
+                    ]);
+                    return $finalPath;
+                }
+            }
+
+            // LibreOffice failed, throw exception to trigger enhanced manual conversion
+            Log::warning('LibreOffice PDF conversion failed, will use enhanced manual method');
+            throw new Exception('LibreOffice_PDF_Conversion_Failed');
+
+        } finally {
+            // Clean up temporary directory
+            if (is_dir($uniqueSubDir)) {
+                $files = glob($uniqueSubDir . DIRECTORY_SEPARATOR . '*');
+                foreach ($files as $file) {
+                    if (is_file($file)) {
+                        @unlink($file);
+                    }
+                }
+                @rmdir($uniqueSubDir);
+            }
+        }
+    }
+
+    /**
+     * Enhanced PDF to Word conversion with better formatting preservation
+     */
+    public static function createEnhancedWordFromPdf($inputPath, $outputPath)
+    {
+        Log::info('Starting enhanced PDF to Word conversion', [
+            'input' => $inputPath,
+            'output' => $outputPath
+        ]);
+
+        // Use the new PhpWord-based method for better compatibility
+        return self::createSimpleWordFromPdf($inputPath, $outputPath);
+    }
+
+    /**
+     * Create a simple Word document from PDF using plain text format for maximum compatibility
+     */
+    public static function createSimpleWordFromPdf($inputPath, $outputPath)
+    {
+        try {
+            // Extract text content
+            $textContent = self::extractTextFromPdf($inputPath);
+            
+            Log::info('Creating simple Word document using plain text format', [
+                'text_length' => strlen($textContent),
+                'output_path' => $outputPath
+            ]);
+
+            // Ensure output directory exists
+            $outputDir = dirname($outputPath);
+            if (!file_exists($outputDir)) {
+                mkdir($outputDir, 0755, true);
+            }
+
+            // Check if this is an image-heavy PDF
+            $fileSize = filesize($inputPath);
+            $textLength = strlen(trim($textContent));
+            $isImageHeavyPdf = ($fileSize > 1000000 && $textLength < 2000) || ($textLength < 100);
+            
+            // Create content as plain text first
+            $content = "PDF to Word Conversion\n";
+            $content .= "========================\n\n";
+            $content .= "Source: " . basename($inputPath) . "\n\n";
+            
+            if (!empty(trim($textContent)) && !$isImageHeavyPdf) {
+                $content .= "Extracted Text:\n";
+                $content .= "---------------\n\n";
+                $content .= $textContent . "\n\n";
+            } else {
+                // Enhanced content for image-based PDFs
+                $content .= "PDF Analysis:\n";
+                $content .= "-------------\n\n";
+                $content .= "This PDF appears to be image-based with minimal extractable text.\n\n";
+                $content .= "Original PDF size: " . self::formatFileSize($fileSize) . "\n";
+                $content .= "Extracted text: " . $textLength . " characters\n\n";
+                
+                // Try to extract images and create image placeholders
+                try {
+                    $images = self::extractImagesFromPdf($inputPath);
+                    if (!empty($images)) {
+                        $content .= "This PDF contains " . count($images) . " pages with images.\n";
+                        $content .= "For complete content, please refer to the original PDF file.\n\n";
+                        
+                        $content .= "Page Structure:\n";
+                        $content .= "---------------\n";
+                        
+                        // Add basic page structure information
+                        foreach ($images as $index => $imageInfo) {
+                            $pageNum = $imageInfo['page'] ?? ($index + 1);
+                            $content .= "Page " . $pageNum . ": Image content (" . 
+                                       ($imageInfo['width'] ?? 'unknown') . "x" . 
+                                       ($imageInfo['height'] ?? 'unknown') . ")\n";
+                        }
+                        
+                        // Clean up image files
+                        foreach ($images as $imageInfo) {
+                            if (file_exists($imageInfo['path'])) {
+                                @unlink($imageInfo['path']);
+                            }
+                        }
+                    } else {
+                        $content .= "No images could be extracted from this PDF.\n";
+                    }
+                } catch (\Exception $e) {
+                    $content .= "Image extraction failed: " . $e->getMessage() . "\n";
+                }
+                
+                $content .= "\nNote: This conversion is limited for image-based PDFs. ";
+                $content .= "Consider using OCR software for better text extraction.\n";
+                
+                // Add any extracted text at the end
+                if (!empty(trim($textContent))) {
+                    $content .= "\nExtracted Text (Limited):\n";
+                    $content .= "-------------------------\n";
+                    $content .= $textContent . "\n";
+                }
+            }
+            
+            // Create a simple Word document using PhpWord with proper settings
+            $phpWord = new \PhpOffice\PhpWord\PhpWord();
+            
+            // Set document properties to avoid corruption
+            $properties = $phpWord->getDocInfo();
+            $properties->setCreator('FlexiConvert');
+            $properties->setTitle('PDF to Word Conversion');
+            
+            $section = $phpWord->addSection([
+                'marginTop' => 720,
+                'marginBottom' => 720,
+                'marginLeft' => 720,
+                'marginRight' => 720
+            ]);
+            
+            // Add content with proper formatting
+            $lines = explode("\n", $content);
+            $isFirstLine = true;
+            
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if ($line === '') {
+                    $section->addTextBreak();
+                } else {
+                    // Add different formatting for headers
+                    if ($isFirstLine || strpos($line, '=') !== false) {
+                        $section->addText($line, ['bold' => true, 'size' => 14]);
+                        $isFirstLine = false;
+                    } elseif (strpos($line, '-') !== false && strlen($line) < 50) {
+                        $section->addText($line, ['bold' => true, 'size' => 12]);
+                    } else {
+                        $section->addText($line, ['size' => 11]);
+                    }
+                    $section->addTextBreak();
+                }
+            }
+            
+            // Save as DOCX with error handling
+            try {
+                $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+                
+                // Set writer properties to avoid corruption
+                $writer->setUseDiskCaching(true);
+                $writer->save($outputPath);
+                
+                if (file_exists($outputPath) && filesize($outputPath) > 5000) {
+                    Log::info('Word document created successfully', [
+                        'output_path' => $outputPath,
+                        'file_size' => filesize($outputPath),
+                        'format' => 'docx'
+                    ]);
+                    
+                    return $outputPath;
+                }
+            } catch (\Exception $e) {
+                Log::warning('DOCX creation failed: ' . $e->getMessage());
+            }
+            
+            // Fallback: save as RTF with simpler format
+            $rtfPath = str_replace('.docx', '.rtf', $outputPath);
+            $rtfContent = "{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Arial;}}\\f0\\fs20 ";
+            $rtfContent .= str_replace(["\n", "\\", "{", "}"], ["\\par ", "\\\\", "\\{", "\\}"], $content);
+            $rtfContent .= "}";
+            
+            if (file_put_contents($rtfPath, $rtfContent) !== false) {
+                Log::info('Word document created successfully', [
+                    'output_path' => $rtfPath,
+                    'file_size' => filesize($rtfPath),
+                    'format' => 'rtf'
+                ]);
+                
+                return $rtfPath;
+            }
+            
+            throw new \Exception('Failed to create Word document in any format');
+            
+        } catch (\Exception $e) {
+            Log::error('Error creating simple Word document from PDF: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Create a simple, reliable Word document using RTF format for better compatibility
+     */
+    private static function createSimpleWordDocument($textContent, $outputPath, $inputPath)
+    {
+        try {
+            Log::info('Creating simple Word document using RTF format', [
+                'text_length' => strlen($textContent),
+                'output_path' => $outputPath
+            ]);
+
+            // Ensure output directory exists
+            $outputDir = dirname($outputPath);
+            if (!file_exists($outputDir)) {
+                mkdir($outputDir, 0755, true);
+            }
+
+            // Check if this is an image-heavy PDF
+            $fileSize = filesize($inputPath);
+            $textLength = strlen(trim($textContent));
+            $isImageHeavyPdf = ($fileSize > 1000000 && $textLength < 2000) || ($textLength < 100);
+            
+            // Create RTF content (Rich Text Format - more compatible)
+            $rtfContent = "{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times New Roman;}}";
+            $rtfContent .= "\\f0\\fs24";
+            
+            // Add header
+            $rtfContent .= "{\\b\\fs28 PDF to Word Conversion}\\par\\par";
+            $rtfContent .= "{\\i Source: " . self::escapeRtf(basename($inputPath)) . "}\\par\\par";
+            
+            // Add text content - check if this is a meaningful amount of text relative to file size
+            $fileSize = filesize($inputPath);
+            $textLength = strlen(trim($textContent));
+            $isImageHeavyPdf = ($fileSize > 1000000 && $textLength < 2000) || ($textLength < 100);
+            
+            if (!empty(trim($textContent)) && !$isImageHeavyPdf) {
+                // Clean and escape text for RTF
+                $cleanText = self::escapeRtf($textContent);
+                
+                // Split into paragraphs
+                $paragraphs = preg_split('/\n\s*\n/', $cleanText);
+                
+                foreach ($paragraphs as $paragraph) {
+                    $paragraph = trim($paragraph);
+                    if (!empty($paragraph)) {
+                        // Replace line breaks with RTF line breaks
+                        $paragraph = str_replace("\n", "\\par ", $paragraph);
+                        $rtfContent .= $paragraph . "\\par\\par ";
+                    }
+                }
+            } else {
+                // If text is minimal, this is likely an image-based PDF
+                $rtfContent .= "This PDF appears to be image-based with minimal extractable text.\\par\\par";
+                $rtfContent .= "Original PDF size: " . self::formatFileSize(filesize($inputPath)) . "\\par";
+                $rtfContent .= "Extracted text: " . strlen($textContent) . " characters\\par\\par";
+                
+                // Try to extract images and create image placeholders
+                try {
+                    $images = self::extractImagesFromPdf($inputPath);
+                    if (!empty($images)) {
+                        $rtfContent .= "This PDF contains " . count($images) . " pages with images.\\par";
+                        $rtfContent .= "For complete content, please refer to the original PDF file.\\par\\par";
+                        
+                        // Add basic page structure information
+                        foreach ($images as $index => $imageInfo) {
+                            $pageNum = $imageInfo['page'] ?? ($index + 1);
+                            $rtfContent .= "Page " . $pageNum . ": Image content (" . 
+                                          ($imageInfo['width'] ?? 'unknown') . "x" . 
+                                          ($imageInfo['height'] ?? 'unknown') . ")\\par";
+                        }
+                        
+                        // Clean up image files
+                        foreach ($images as $imageInfo) {
+                            if (file_exists($imageInfo['path'])) {
+                                @unlink($imageInfo['path']);
+                            }
+                        }
+                    } else {
+                        $rtfContent .= "No images could be extracted from this PDF.\\par";
+                    }
+                } catch (\Exception $e) {
+                    $rtfContent .= "Image extraction failed: " . self::escapeRtf($e->getMessage()) . "\\par";
+                }
+                
+                $rtfContent .= "\\par{\\b Note:} This conversion is limited for image-based PDFs. ";
+                $rtfContent .= "Consider using OCR software for better text extraction.\\par";
+            }
+            
+            $rtfContent .= "}";
+            
+            // Change extension to .rtf for better compatibility
+            $rtfPath = str_replace('.docx', '.rtf', $outputPath);
+            
+            // Write RTF file
+            if (file_put_contents($rtfPath, $rtfContent) === false) {
+                throw new \Exception('Failed to write RTF file');
+            }
+            
+            // If RTF was created successfully, try to convert it to DOCX using PhpWord
+            try {
+                $phpWord = \PhpOffice\PhpWord\IOFactory::load($rtfPath);
+                $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+                $writer->save($outputPath);
+                
+                // Remove RTF file if DOCX was created successfully
+                if (file_exists($outputPath) && filesize($outputPath) > 1000) {
+                    @unlink($rtfPath);
+                    $finalPath = $outputPath;
+                } else {
+                    // Keep RTF file if DOCX creation failed
+                    $finalPath = $rtfPath;
+                }
+            } catch (\Exception $e) {
+                Log::warning('DOCX conversion failed, keeping RTF format: ' . $e->getMessage());
+                $finalPath = $rtfPath;
+            }
+            
+            $fileSize = filesize($finalPath);
+            Log::info('Word document created successfully', [
+                'output_path' => $finalPath,
+                'file_size' => $fileSize,
+                'format' => pathinfo($finalPath, PATHINFO_EXTENSION)
+            ]);
+            
+            return $finalPath;
+            
+        } catch (\Exception $e) {
+            Log::error('Word document creation failed', [
+                'error' => $e->getMessage(),
+                'output_path' => $outputPath
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Escape text for RTF format
+     */
+    private static function escapeRtf($text)
+    {
+        // Escape RTF special characters
+        $text = str_replace('\\', '\\\\', $text);
+        $text = str_replace('{', '\\{', $text);
+        $text = str_replace('}', '\\}', $text);
+        
+        // Convert non-ASCII characters to RTF unicode
+        $text = mb_convert_encoding($text, 'UTF-8', 'auto');
+        
+        return $text;
+    }
+
+    /**
+     * Format file size in human readable format
+     */
+    private static function formatFileSize($bytes)
+    {
+        if ($bytes >= 1024 * 1024) {
+            return round($bytes / (1024 * 1024), 1) . ' MB';
+        } elseif ($bytes >= 1024) {
+            return round($bytes / 1024, 1) . ' KB';
+        } else {
+            return $bytes . ' bytes';
+        }
+    }
+
+    /**
+     * Extract text from PDF with better structure preservation
+     */
+    private static function extractStructuredTextFromPdf($pdfPath)
+    {
+        try {
+            $parser = new \Smalot\PdfParser\Parser();
+            $pdf = $parser->parseFile($pdfPath);
+            
+            $text = '';
+            $pages = $pdf->getPages();
+            
+            foreach ($pages as $pageNumber => $page) {
+                $pageText = $page->getText();
+                if (!empty(trim($pageText))) {
+                    $text .= "\n\n=== Page " . ($pageNumber + 1) . " ===\n\n";
+                    $text .= $pageText;
+                }
+            }
+            
+            return $text;
+            
+        } catch (\Exception $e) {
+            Log::warning('PDF text extraction failed: ' . $e->getMessage());
+            return "Unable to extract text from PDF. The document may be image-based or protected.";
+        }
+    }
+
+    /**
+     * Add enhanced formatted content to Word document
+     */
+    private static function addEnhancedFormattedContent($section, $content)
+    {
+        $lines = explode("\n", $content);
+        
+        foreach ($lines as $line) {
+            $line = trim($line);
+            
+            if (empty($line)) {
+                $section->addTextBreak();
+                continue;
+            }
+            
+            // Detect headings (lines that start with numbers or are all caps)
+            if (preg_match('/^(\d+\.|\d+\.\d+\.|\w+\.)/', $line) || 
+                (strlen($line) < 100 && strtoupper($line) === $line && ctype_alpha(str_replace(' ', '', $line)))) {
+                
+                $section->addText($line, [
+                    'name' => 'Calibri',
+                    'size' => 14,
+                    'bold' => true,
+                    'color' => '2E74B5'
+                ]);
+            }
+            // Detect bullet points
+            elseif (preg_match('/^[•\-\*]\s/', $line)) {
+                $section->addText($line, [
+                    'name' => 'Calibri',
+                    'size' => 11
+                ]);
+            }
+            // Regular text
+            else {
+                $section->addText($line, [
+                    'name' => 'Calibri',
+                    'size' => 11
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Add images to Word document with better error handling
+     */
+    private static function addImagesToWordDocument($section, $images)
+    {
+        if (empty($images)) return;
+        
+        $section->addTextBreak(2);
+        $section->addText('Images from PDF:', [
+            'name' => 'Calibri',
+            'size' => 12,
+            'bold' => true,
+            'color' => '2E74B5'
+        ]);
+        $section->addTextBreak();
+        
+        $addedImages = 0;
+        $maxImages = 3; // Limit images to prevent document corruption
+        
+        foreach ($images as $index => $imageInfo) {
+            if ($addedImages >= $maxImages) {
+                $section->addText('... and ' . (count($images) - $addedImages) . ' more images from the original PDF', [
+                    'italic' => true,
+                    'size' => 10
+                ]);
+                break;
+            }
+            
+            if (file_exists($imageInfo['path'])) {
+                try {
+                    // Validate image file
+                    $imageSize = getimagesize($imageInfo['path']);
+                    if ($imageSize === false) {
+                        Log::warning('Invalid image file: ' . $imageInfo['path']);
+                        continue;
+                    }
+                    
+                    // Check file size (limit to 2MB per image)
+                    $fileSize = filesize($imageInfo['path']);
+                    if ($fileSize > 2 * 1024 * 1024) {
+                        Log::warning('Image too large, skipping: ' . $fileSize . ' bytes');
+                        continue;
+                    }
+                    
+                    // Add image with conservative sizing
+                    $section->addImage($imageInfo['path'], [
+                        'width' => 300, // Fixed width to prevent layout issues
+                        'height' => 200, // Fixed height
+                        'wrappingStyle' => 'inline'
+                    ]);
+                    
+                    $section->addText('Page ' . ($imageInfo['page'] ?? ($index + 1)), [
+                        'size' => 9,
+                        'italic' => true,
+                        'color' => '666666'
+                    ]);
+                    $section->addTextBreak();
+                    
+                    $addedImages++;
+                    Log::info('Successfully added image ' . ($addedImages) . ' to Word document');
+                    
+                } catch (\Exception $e) {
+                    Log::warning('Failed to add image from page ' . ($imageInfo['page'] ?? ($index + 1)) . ': ' . $e->getMessage());
+                    
+                    // Add placeholder text instead
+                    $section->addText('[Image from page ' . ($imageInfo['page'] ?? ($index + 1)) . ' could not be displayed]', [
+                        'italic' => true,
+                        'color' => '999999'
+                    ]);
+                    $section->addTextBreak();
+                }
+            }
+        }
+        
+        if ($addedImages === 0) {
+            $section->addText('Images could not be processed from the PDF.', [
+                'italic' => true,
+                'color' => '999999'
+            ]);
+        }
+        
+        // Clean up image files
+        foreach ($images as $imageInfo) {
+            if (file_exists($imageInfo['path'])) {
+                @unlink($imageInfo['path']);
+            }
+        }
+        
+        Log::info('Image processing completed', [
+            'total_images' => count($images),
+            'added_images' => $addedImages
+        ]);
+    }
+
+    /**
      * Convert Office document to PDF using LibreOffice CLI with unique temp directory
      */
     public static function convertWithLibreOffice($inputPath, $outputDir)

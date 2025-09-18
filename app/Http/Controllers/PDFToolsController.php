@@ -734,8 +734,48 @@ class PDFToolsController extends Controller
                 'settings' => json_encode($settings)
             ]);
 
-            $textContent = PDFToolsHelperMethods::extractTextFromPdf($fullInputPath);
-            PDFToolsHelperMethods::createWordDocument($textContent, Storage::path($outputPath), $fullInputPath);
+            // Try LibreOffice first, fallback to manual method if it fails
+            $outputDir = Storage::path('pdf-tools/outputs');
+            if (!is_dir($outputDir)) {
+                mkdir($outputDir, 0755, true);
+            }
+
+            try {
+                $convertedDocxPath = PDFToolsHelperMethods::convertPdfToOfficeWithLibreOffice($fullInputPath, $outputDir, 'docx');
+                
+                $finalPath = Storage::path($outputPath);
+                rename($convertedDocxPath, $finalPath);
+                
+                Log::info('PDF to Word conversion successful using LibreOffice');
+            } catch (\Exception $e) {
+                if (strpos($e->getMessage(), 'LibreOffice_PDF_Conversion_Failed') !== false) {
+                    Log::info('LibreOffice failed, falling back to enhanced manual PDF to Word conversion');
+                    
+                    // Fallback to enhanced manual conversion
+                    $createdFilePath = PDFToolsHelperMethods::createEnhancedWordFromPdf($fullInputPath, Storage::path($outputPath));
+                    
+                    // Check if the created file has a different extension (RTF)
+                    if (pathinfo($createdFilePath, PATHINFO_EXTENSION) === 'rtf') {
+                        // Update the processing record to reflect RTF format
+                        $rtfFileName = str_replace('.docx', '.rtf', $outputFileName);
+                        $processing->update([
+                            'processed_filename' => $rtfFileName
+                        ]);
+                        
+                        // Update output path for final processing
+                        $outputPath = 'pdf-tools/outputs/' . $rtfFileName;
+                        $outputFileName = $rtfFileName;
+                        
+                        Log::info('Updated processing record for RTF format', [
+                            'new_filename' => $rtfFileName
+                        ]);
+                    }
+                    
+                    Log::info('PDF to Word conversion completed using enhanced manual fallback method');
+                } else {
+                    throw $e;
+                }
+            }
             
             Storage::delete($inputPath);
             
@@ -846,8 +886,32 @@ class PDFToolsController extends Controller
             $inputPath = $file->store(config('pdftools.storage.uploads_path'));
             $fullInputPath = Storage::path($inputPath);
             
-            $textContent = PDFToolsHelperMethods::extractTextFromPdf($fullInputPath);
-            PDFToolsHelperMethods::createExcelDocument($textContent, Storage::path($outputPath), $fullInputPath);
+            // Try LibreOffice first, fallback to manual method if it fails
+            $outputDir = Storage::path('pdf-tools/outputs');
+            if (!is_dir($outputDir)) {
+                mkdir($outputDir, 0755, true);
+            }
+
+            try {
+                $convertedXlsxPath = PDFToolsHelperMethods::convertPdfToOfficeWithLibreOffice($fullInputPath, $outputDir, 'xlsx');
+                
+                $finalPath = Storage::path($outputPath);
+                rename($convertedXlsxPath, $finalPath);
+                
+                Log::info('PDF to Excel conversion successful using LibreOffice');
+            } catch (\Exception $e) {
+                if (strpos($e->getMessage(), 'LibreOffice_PDF_Conversion_Failed') !== false) {
+                    Log::info('LibreOffice failed, falling back to manual PDF to Excel conversion');
+                    
+                    // Fallback to manual conversion
+                    $textContent = PDFToolsHelperMethods::extractTextFromPdf($fullInputPath);
+                    PDFToolsHelperMethods::createExcelDocument($textContent, Storage::path($outputPath), $fullInputPath);
+                    
+                    Log::info('PDF to Excel conversion completed using manual fallback method');
+                } else {
+                    throw $e;
+                }
+            }
             
             Storage::delete($inputPath);
             
@@ -958,25 +1022,31 @@ class PDFToolsController extends Controller
             $inputPath = $file->store(config('pdftools.storage.uploads_path'));
             $fullInputPath = Storage::path($inputPath);
             
-            // Check preserve_layout setting (default: true)
-            $preserveLayout = $settings['preserve_layout'] ?? true;
-            
-            if ($preserveLayout) {
-                try {
-                    // Try image-based conversion first
-                    PDFToolsHelperMethods::createPowerPointFromPdfPages($fullInputPath, Storage::path($outputPath), $settings);
-                    Log::info("PDF to PowerPoint: Used preserve_layout mode successfully");
-                } catch (\Exception $e) {
-                    // Fallback to text-only conversion
-                    Log::warning("PDF to PowerPoint: preserve_layout failed, falling back to text-only", [
-                        'error' => $e->getMessage()
-                    ]);
-                    PDFToolsHelperMethods::createPowerPointFromPdfPages($fullInputPath, Storage::path($outputPath));
+            // Try LibreOffice first, fallback to manual method if it fails
+            $outputDir = Storage::path('pdf-tools/outputs');
+            if (!is_dir($outputDir)) {
+                mkdir($outputDir, 0755, true);
+            }
+
+            try {
+                $convertedPptxPath = PDFToolsHelperMethods::convertPdfToOfficeWithLibreOffice($fullInputPath, $outputDir, 'pptx');
+                
+                $finalPath = Storage::path($outputPath);
+                rename($convertedPptxPath, $finalPath);
+                
+                Log::info('PDF to PowerPoint conversion successful using LibreOffice');
+            } catch (\Exception $e) {
+                if (strpos($e->getMessage(), 'LibreOffice_PDF_Conversion_Failed') !== false) {
+                    Log::info('LibreOffice failed, falling back to manual PDF to PowerPoint conversion');
+                    
+                    // Fallback to manual conversion
+                    $textContent = PDFToolsHelperMethods::extractTextFromPdf($fullInputPath);
+                    PDFToolsHelperMethods::createPowerPointDocument($textContent, Storage::path($outputPath), $fullInputPath);
+                    
+                    Log::info('PDF to PowerPoint conversion completed using manual fallback method');
+                } else {
+                    throw $e;
                 }
-            } else {
-                // Use text-only conversion
-                $textContent = PDFToolsHelperMethods::extractTextFromPdf($fullInputPath);
-                PDFToolsHelperMethods::createPowerPointDocument($textContent, Storage::path($outputPath), $fullInputPath);
             }
             
             Storage::delete($inputPath);
