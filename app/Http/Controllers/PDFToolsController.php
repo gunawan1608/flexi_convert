@@ -7,17 +7,47 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use App\Models\PdfProcessing;
 use App\Services\GotenbergService;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Exception;
-use Dompdf\Dompdf;
-use Dompdf\Options;
+use RuntimeException;
 use setasign\Fpdi\Fpdi;
-use setasign\Fpdf\Fpdf;
 use App\Http\Controllers\PDFToolsHelperMethods;
+use Symfony\Component\HttpFoundation\Response;
 
 class PDFToolsController extends Controller
 {
+    private const GOTENBERG_SUPPORTED_TOOLS = [
+        'word-to-pdf',
+        'docx-to-pdf',
+        'excel-to-pdf',
+        'xlsx-to-pdf',
+        'ppt-to-pdf',
+        'powerpoint-to-pdf',
+        'jpg-to-pdf',
+        'image-to-pdf',
+        'images-to-pdf',
+        'html-to-pdf',
+        'merge-pdf',
+        'split-pdf',
+    ];
+
+    private const DISABLED_LEGACY_TOOLS = [
+        'compress-pdf',
+        'rotate-pdf',
+        'add-watermark',
+        'add-page-numbers',
+        'pdf-to-word',
+        'pdf-to-docx',
+        'pdf-to-excel',
+        'pdf-to-xlsx',
+        'pdf-to-ppt',
+        'pdf-to-powerpoint',
+        'pdf-to-jpg',
+        'pdf-to-image',
+    ];
+
     public function __construct(private GotenbergService $gotenberg)
     {
     }
@@ -46,7 +76,10 @@ class PDFToolsController extends Controller
             $files = $request->file('files');
             $tool = $request->input('tool');
             $settings = json_decode($request->input('settings', '{}'), true) ?? [];
-            $userId = auth()->id();
+            $userId = $this->currentUserId();
+
+            $this->guardToolAvailability($tool);
+            $this->ensureGotenbergReadyFor($tool);
 
             // Enhanced file validation
             $this->validateFileTypesForTool($tool, $files);
@@ -75,8 +108,24 @@ class PDFToolsController extends Controller
             Log::error('PDF Tools validation failed', ['errors' => $e->errors()]);
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed: ' . implode(', ', array_flatten($e->errors()))
+                'message' => 'Validation failed: ' . implode(', ', Arr::flatten($e->errors()))
             ], 422);
+        } catch (RuntimeException $e) {
+            $status = $e->getCode();
+            if (!is_int($status) || $status < 400 || $status > 599) {
+                $status = 500;
+            }
+
+            Log::error('PDF Tools runtime failure', [
+                'error' => $e->getMessage(),
+                'tool' => $request->input('tool', 'unknown'),
+                'status' => $status,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], $status);
         } catch (Exception $e) {
             Log::error('PDF Tools processing failed', [
                 'error' => $e->getMessage(),
@@ -106,39 +155,19 @@ class PDFToolsController extends Controller
                 return $this->mergePdfs($files, $settings);
             case 'split-pdf':
                 return $this->splitPdf($files[0], $settings);
-            case 'compress-pdf':
-                return $this->compressPdf($files[0], $settings);
-            case 'rotate-pdf':
-                return $this->rotatePdf($files[0], $settings);
-            case 'add-watermark':
-                return $this->addWatermark($files[0], $settings);
-            case 'add-page-numbers':
-                return $this->addPageNumbers($files[0], $settings);
             case 'jpg-to-pdf':
             case 'image-to-pdf':
             case 'images-to-pdf':
                 return $this->imageToPdf($files, $settings);
-            case 'pdf-to-jpg':
-            case 'pdf-to-image':
-                return $this->pdfToImage($files[0], $settings);
             case 'word-to-pdf':
             case 'docx-to-pdf':
                 return $this->wordToPdf($files[0], $settings);
-            case 'pdf-to-word':
-            case 'pdf-to-docx':
-                return $this->pdfToWord($files[0], $settings);
             case 'excel-to-pdf':
             case 'xlsx-to-pdf':
                 return $this->excelToPdf($files[0], $settings);
-            case 'pdf-to-excel':
-            case 'pdf-to-xlsx':
-                return $this->pdfToExcel($files[0], $settings);
             case 'ppt-to-pdf':
             case 'powerpoint-to-pdf':
                 return $this->powerpointToPdf($files[0], $settings);
-            case 'pdf-to-ppt':
-            case 'pdf-to-powerpoint':
-                return $this->pdfToPowerpoint($files[0], $settings);
             case 'html-to-pdf':
                 return $this->htmlToPdf($files[0], $settings);
             default:
@@ -172,85 +201,6 @@ class PDFToolsController extends Controller
     }
 
     /**
-     * Compress PDF using Ghostscript with FPDI fallback
-     * 
-     * @param \Illuminate\Http\UploadedFile $file PDF file to compress
-     * @param array $settings Compression settings (compressionLevel: low|medium|high)
-     * @return \Illuminate\Http\JsonResponse Success response with download info or error
-     */
-    private function compressPdf($file, $settings = [])
-    {
-        $processing = null;
-
-        try {
-            $inputPath = $file->store(config('pdftools.storage.uploads_path'));
-            $fullInputPath = Storage::path($inputPath);
-
-            $outputFileName = 'compressed_pdf_' . Str::uuid() . '.pdf';
-            $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
-
-            $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
-                'tool_name' => 'compress-pdf',
-                'original_filename' => $file->getClientOriginalName(),
-                'processed_filename' => $outputFileName,
-                'file_size' => $file->getSize(),
-                'status' => 'processing',
-                'progress' => 0,
-                'settings' => json_encode($settings),
-            ]);
-
-            $result = $this->gotenberg->compressPdf($fullInputPath, array_merge($settings, [
-                'output_filename' => $outputFileName,
-            ]));
-
-            $this->storeGotenbergResult($result, $outputPath, [$inputPath]);
-
-            $processing->update([
-                'status' => 'completed',
-                'progress' => 100,
-                'processed_file_size' => Storage::size($outputPath),
-                'completed_at' => now(),
-            ]);
-
-            return PDFToolsHelperMethods::createSuccessResponse(
-                'PDF berhasil dikompres',
-                $processing->id,
-                $outputFileName,
-                route('pdf-tools.download', $processing->id)
-            );
-        } catch (Exception $e) {
-            if ($processing) {
-                $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
-            }
-
-            return response()->json([
-                'success' => false,
-                'message' => 'PDF compression failed: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Rotate PDF pages
-     * 
-     * @param \Illuminate\Http\UploadedFile $file PDF file to rotate
-     * @param array $settings Rotation settings (rotation: 90|180|270|-90)
-     * @return \Illuminate\Http\JsonResponse Success response with download info or error
-     */
-    private function rotatePdf($file, $settings = [])
-    {
-        try {
-            return PDFToolsHelperMethods::processRotatePdf($file, $settings);
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'PDF rotation failed: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
      * Split PDF into separate files
      * 
      * @param \Illuminate\Http\UploadedFile $file PDF file to split
@@ -271,7 +221,7 @@ class PDFToolsController extends Controller
             $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
 
             $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
+                'user_id' => $this->currentUserId(),
                 'tool_name' => 'split-pdf',
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
@@ -329,7 +279,7 @@ class PDFToolsController extends Controller
             $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
 
             $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
+                'user_id' => $this->currentUserId(),
                 'tool_name' => 'merge-pdf',
                 'original_filename' => count($files) . ' PDF files',
                 'processed_filename' => $outputFileName,
@@ -376,56 +326,6 @@ class PDFToolsController extends Controller
     }
 
     /**
-     * Find LibreOffice executable path
-     */
-    private function findLibreOffice()
-    {
-        // Common LibreOffice paths
-        $paths = [
-            '/usr/bin/libreoffice',
-            '/usr/bin/soffice',
-            '/opt/libreoffice/program/soffice',
-            '/Applications/LibreOffice.app/Contents/MacOS/soffice',
-            'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
-            'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
-            'C:\\Program Files\\LibreOffice\\program\\soffice.com'
-        ];
-
-        foreach ($paths as $path) {
-            if (file_exists($path)) {
-                Log::info('LibreOffice found at path', ['path' => $path]);
-                return $path;
-            }
-        }
-
-        // Try to find in PATH
-        if (PHP_OS_FAMILY === 'Windows') {
-            $process = popen('where soffice 2>nul', 'r');
-            if ($process) {
-                $path = trim(fread($process, 1024));
-                pclose($process);
-                if ($path && file_exists($path)) {
-                    Log::info('LibreOffice found via where command', ['path' => $path]);
-                    return $path;
-                }
-            }
-        } else {
-            $process = popen('which soffice 2>/dev/null', 'r');
-            if ($process) {
-                $path = trim(fread($process, 1024));
-                pclose($process);
-                if ($path && file_exists($path)) {
-                    Log::info('LibreOffice found via which command', ['path' => $path]);
-                    return $path;
-                }
-            }
-        }
-
-        Log::warning('LibreOffice not found in any standard location');
-        return null;
-    }
-
-    /**
      * Validate file types for specific conversion tools
      */
     private function validateFileTypesForTool($tool, $files)
@@ -440,20 +340,8 @@ class PDFToolsController extends Controller
             'image-to-pdf' => ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff'],
             'jpg-to-pdf' => ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff'],
             'images-to-pdf' => ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff'],
-            'pdf-to-word' => ['pdf'],
-            'pdf-to-docx' => ['pdf'],
-            'pdf-to-excel' => ['pdf'],
-            'pdf-to-xlsx' => ['pdf'],
-            'pdf-to-ppt' => ['pdf'],
-            'pdf-to-powerpoint' => ['pdf'],
-            'pdf-to-jpg' => ['pdf'],
-            'pdf-to-image' => ['pdf'],
             'merge-pdf' => ['pdf'],
             'split-pdf' => ['pdf'],
-            'compress-pdf' => ['pdf'],
-            'rotate-pdf' => ['pdf'],
-            'add-watermark' => ['pdf'],
-            'add-page-numbers' => ['pdf'],
             'html-to-pdf' => ['html', 'htm']
         ];
 
@@ -531,7 +419,7 @@ class PDFToolsController extends Controller
             $toolName = request()->input('tool', 'image-to-pdf');
 
             $processing = PdfProcessing::create([
-                'user_id' => auth()->id() ?? 1,
+                'user_id' => $this->currentUserId(),
                 'tool_name' => $toolName,
                 'original_filename' => $displayName,
                 'processed_filename' => $outputFileName,
@@ -602,7 +490,7 @@ class PDFToolsController extends Controller
             $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
 
             $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
+                'user_id' => $this->currentUserId(),
                 'tool_name' => 'html-to-pdf',
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
@@ -646,6 +534,27 @@ class PDFToolsController extends Controller
         }
     }
 
+    public function health()
+    {
+        try {
+            $health = $this->gotenberg->health();
+
+            return response()->json([
+                'success' => true,
+                'status' => 'up',
+                'engine' => 'gotenberg',
+                'details' => $health['details'] ?? [],
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'status' => 'down',
+                'engine' => 'gotenberg',
+                'message' => $e->getMessage(),
+            ], Response::HTTP_SERVICE_UNAVAILABLE);
+        }
+    }
+
     /**
      * Convert PDF to image
      */
@@ -664,7 +573,7 @@ class PDFToolsController extends Controller
             $outputPath = 'pdf-tools/outputs/' . $outputFileName;
             
             $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
+                'user_id' => $this->currentUserId(),
                 'tool_name' => 'pdf-to-' . $format,
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
@@ -738,7 +647,7 @@ class PDFToolsController extends Controller
             $outputPath = 'pdf-tools/outputs/' . $outputFileName;
             
             $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
+                'user_id' => $this->currentUserId(),
                 'tool_name' => 'add-watermark',
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
@@ -804,7 +713,7 @@ class PDFToolsController extends Controller
             $outputPath = 'pdf-tools/outputs/' . $outputFileName;
             
             $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
+                'user_id' => $this->currentUserId(),
                 'tool_name' => 'add-page-numbers',
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
@@ -873,7 +782,7 @@ class PDFToolsController extends Controller
             $outputPath = 'pdf-tools/outputs/' . $outputFileName;
             
             $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
+                'user_id' => $this->currentUserId(),
                 'tool_name' => 'pdf-to-word',
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
@@ -980,7 +889,7 @@ class PDFToolsController extends Controller
             $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
 
             $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
+                'user_id' => $this->currentUserId(),
                 'tool_name' => 'pdf-to-excel',
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
@@ -1080,7 +989,7 @@ class PDFToolsController extends Controller
             $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
 
             $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
+                'user_id' => $this->currentUserId(),
                 'tool_name' => 'pdf-to-powerpoint',
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
@@ -1154,7 +1063,7 @@ class PDFToolsController extends Controller
             $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
 
             $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
+                'user_id' => $this->currentUserId(),
                 'tool_name' => $toolName,
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
@@ -1274,6 +1183,31 @@ class PDFToolsController extends Controller
         }
 
         throw new Exception('Mode split PDF belum dipilih.');
+    }
+
+    private function guardToolAvailability(string $tool): void
+    {
+        if (in_array($tool, self::DISABLED_LEGACY_TOOLS, true)) {
+            throw ValidationException::withMessages([
+                'tool' => [
+                    'Tool "' . $tool . '" tidak tersedia dalam mode Gotenberg-only. Gunakan tool yang masih didukung: Word/Excel/PPT ke PDF, Images ke PDF, HTML ke PDF, Merge PDF, atau Split PDF.',
+                ],
+            ]);
+        }
+    }
+
+    private function ensureGotenbergReadyFor(string $tool): void
+    {
+        if (!in_array($tool, self::GOTENBERG_SUPPORTED_TOOLS, true)) {
+            return;
+        }
+
+        $this->gotenberg->health();
+    }
+
+    private function currentUserId(): ?int
+    {
+        return auth('web')->id() ?? auth()->id();
     }
 
     /**
@@ -1400,7 +1334,7 @@ class PDFToolsController extends Controller
                 return 'merged_document.pdf';
             
             case 'split-pdf':
-                return $cleanBaseName . '_split.zip';
+                return $cleanBaseName . '_split.' . pathinfo($processing->processed_filename, PATHINFO_EXTENSION);
             
             // Modification operations - add suffix
             case 'compress-pdf':

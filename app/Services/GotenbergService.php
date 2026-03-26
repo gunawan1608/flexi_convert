@@ -30,42 +30,46 @@ class GotenbergService
         );
     }
 
-    public function compressPdf(string $filePath, array $options = []): array
+    public function health(): array
     {
-        $compressionLevel = strtolower((string) ($options['compressionLevel'] ?? 'medium'));
-        $profiles = [
-            'low' => [
-                'losslessImageCompression' => 'false',
-                'quality' => '60',
-                'reduceImageResolution' => 'true',
-                'maxImageResolution' => '150',
-            ],
-            'medium' => [
-                'losslessImageCompression' => 'false',
-                'quality' => '75',
-                'reduceImageResolution' => 'true',
-                'maxImageResolution' => '300',
-            ],
-            'high' => [
-                'losslessImageCompression' => 'false',
-                'quality' => '90',
-                'reduceImageResolution' => 'false',
-                'maxImageResolution' => '300',
-            ],
-        ];
+        try {
+            $response = Http::baseUrl($this->baseUrl)
+                ->timeout(10)
+                ->acceptJson()
+                ->get('/health');
+        } catch (ConnectionException $e) {
+            throw new RuntimeException('Gotenberg is not reachable at ' . $this->baseUrl . '. Start it first with Docker.', 503, $e);
+        }
 
-        $fields = $profiles[$compressionLevel] ?? $profiles['medium'];
+        if (!$response->successful()) {
+            throw new RuntimeException(
+                'Gotenberg health check failed with HTTP ' . $response->status() . '.',
+                $response->status()
+            );
+        }
 
-        return $this->sendMultipart(
-            '/forms/libreoffice/convert',
-            [[
-                'path' => $filePath,
-                'filename' => basename($filePath),
-            ]],
-            $fields,
-            $options['output_filename'] ?? null,
-            'pdf'
-        );
+        $payload = $response->json();
+        if (!is_array($payload)) {
+            throw new RuntimeException('Gotenberg health check returned an invalid response.', 503);
+        }
+
+        if (($payload['status'] ?? null) !== 'up') {
+            $details = $payload['details'] ?? [];
+            $downModules = [];
+
+            if (is_array($details)) {
+                foreach ($details as $module => $state) {
+                    if (($state['status'] ?? null) !== 'up') {
+                        $downModules[] = $module;
+                    }
+                }
+            }
+
+            $suffix = $downModules !== [] ? ' Unhealthy modules: ' . implode(', ', $downModules) . '.' : '';
+            throw new RuntimeException('Gotenberg is running but not healthy.' . $suffix, 503);
+        }
+
+        return $payload;
     }
 
     public function mergePdfs(array $files, array $options = []): array
@@ -187,22 +191,25 @@ class GotenbergService
         try {
             $response = $request->post($endpoint, $fields);
         } catch (ConnectionException $e) {
-            throw new RuntimeException(
-                'Gotenberg is not reachable at ' . $this->baseUrl . '. Start it first with Docker.',
-                previous: $e
-            );
+            throw new RuntimeException('Gotenberg is not reachable at ' . $this->baseUrl . '. Start it first with Docker.', 503, $e);
         }
 
         if (!$response->successful()) {
             Log::error('Gotenberg request failed', [
                 'endpoint' => $endpoint,
                 'status' => $response->status(),
+                'fields' => $fields,
                 'body' => $response->body(),
                 'trace' => $response->header('Gotenberg-Trace'),
             ]);
 
-            $message = trim($response->body());
-            throw new RuntimeException($message !== '' ? $message : 'Gotenberg request failed.');
+            $message = $this->normalizeErrorMessage($endpoint, $fields, $response);
+            $status = $response->status();
+            if ($status < 400 || $status > 599) {
+                $status = 500;
+            }
+
+            throw new RuntimeException($message !== '' ? $message : 'Gotenberg request failed.', $status);
         }
 
         return $this->storeResponse($response, $preferredExtension);
@@ -320,6 +327,22 @@ class GotenbergService
             'LEGAL' => ['width' => '8.5in', 'height' => '14in'],
             default => null,
         };
+    }
+
+    private function normalizeErrorMessage(string $endpoint, array $fields, Response $response): string
+    {
+        $message = trim($response->body());
+
+        if (
+            $endpoint === '/forms/libreoffice/convert' &&
+            $response->status() === 400 &&
+            empty($fields['nativePageRanges']) &&
+            str_contains($message, "malformed page ranges '' (nativePageRanges)")
+        ) {
+            return 'LibreOffice gagal memproses file Office ini. Aplikasi tidak mengirim pengaturan page range, jadi penyebab paling mungkin adalah file dokumen rusak, terlindungi password, atau memakai konten yang tidak kompatibel. Coba buka lalu Save As menjadi file .docx/.xlsx/.pptx baru, kemudian upload lagi.';
+        }
+
+        return $message;
     }
 
     private function buildImagesHtml(array $files, array $options = []): string

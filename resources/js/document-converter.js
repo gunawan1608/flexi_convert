@@ -45,6 +45,7 @@ window.apiRequest = async function(url, options = {}) {
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
         
         const defaultOptions = {
+            credentials: 'same-origin',
             headers: {
                 'X-CSRF-TOKEN': csrfToken,
                 'Accept': 'application/json',
@@ -54,18 +55,41 @@ window.apiRequest = async function(url, options = {}) {
         };
         
         const response = await fetch(url, defaultOptions);
+
+        const parseErrorMessage = async () => {
+            const contentType = response.headers.get('content-type') || '';
+
+            if (contentType.includes('application/json')) {
+                try {
+                    const errorData = await response.json();
+                    return errorData.message || errorData.error || null;
+                } catch {
+                    return null;
+                }
+            }
+
+            try {
+                const text = await response.text();
+                return text.trim() || null;
+            } catch {
+                return null;
+            }
+        };
         
         // Handle non-200 status codes
         if (!response.ok) {
+            const serverMessage = await parseErrorMessage();
+
             if (response.status === 419) {
-                throw new Error('Session expired. Please refresh the page.');
+                throw new Error(serverMessage || 'Session expired. Please refresh the page.');
             } else if (response.status === 422) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Validation failed');
+                throw new Error(serverMessage || 'Validation failed');
+            } else if (response.status === 503) {
+                throw new Error(serverMessage || 'Gotenberg is not reachable. Start it first with Docker.');
             } else if (response.status >= 500) {
-                throw new Error('Server error. Please try again later.');
+                throw new Error(serverMessage || 'Server error. Please try again later.');
             } else {
-                throw new Error(`Request failed with status ${response.status}`);
+                throw new Error(serverMessage || `Request failed with status ${response.status}`);
             }
         }
         

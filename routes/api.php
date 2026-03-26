@@ -2,7 +2,10 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AudioToolsController;
+use App\Http\Controllers\ImageToolsController;
 use App\Http\Controllers\PDFToolsController;
+use App\Http\Controllers\VideoToolsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -19,10 +22,25 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-// PDF Tools API routes (tanpa auth untuk testing)
-Route::post('/pdf-tools/process', [PDFToolsController::class, 'process']);
-Route::get('/pdf-tools/download/{id}', [PDFToolsController::class, 'download']);
+// PDF tool APIs also use the web middleware stack so same-origin requests can
+// reuse the browser session and attribute conversions to the signed-in user.
+Route::middleware('web')->prefix('pdf-tools')->name('pdf-tools.')->group(function () {
+    Route::get('/health', [PDFToolsController::class, 'health'])->name('health');
+    Route::post('/process', [PDFToolsController::class, 'process'])->name('process');
+    Route::get('/download/{id}', [PDFToolsController::class, 'download'])->name('download');
+});
 
-// Image Tools API routes (tanpa auth untuk testing)
-Route::post('/image-tools/process', [App\Http\Controllers\ImageToolsController::class, 'process']);
-Route::get('/image-tools/download/{id}', [App\Http\Controllers\ImageToolsController::class, 'download']);
+Route::prefix('image-tools')->name('image-tools.')->group(function () {
+    Route::post('/process', [ImageToolsController::class, 'process'])->name('process');
+    Route::get('/download/{id}', [ImageToolsController::class, 'download'])->name('download');
+});
+
+Route::prefix('audio-tools')->name('audio-tools.')->group(function () {
+    Route::post('/process', [AudioToolsController::class, 'process'])->name('process');
+    Route::get('/download/{id}', [AudioToolsController::class, 'download'])->name('download');
+});
+
+Route::prefix('video-tools')->name('video-tools.')->group(function () {
+    Route::post('/process', [VideoToolsController::class, 'process'])->name('process');
+    Route::get('/download/{id}', [VideoToolsController::class, 'download'])->name('download');
+});

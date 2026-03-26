@@ -1,6 +1,9 @@
 services:
   gotenberg:
-    image: gotenberg/gotenberg:8
+    build:
+      context: .
+      dockerfile: docker/gotenberg/Dockerfile
+    image: flexiconvert-gotenberg:local
     container_name: flexiconvert-gotenberg
     restart: unless-stopped
     ports:

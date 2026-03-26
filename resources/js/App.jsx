@@ -17,8 +17,8 @@ const App = () => {
             ),
             tools: [
                 { name: 'Word to PDF', description: 'Convert DOCX to PDF' },
-                { name: 'PDF to Word', description: 'Convert PDF to DOCX' },
-                { name: 'Compress PDF', description: 'Reduce PDF size' }
+                { name: 'Merge PDF', description: 'Combine multiple PDF files' },
+                { name: 'HTML to PDF', description: 'Render HTML with Chromium' }
             ]
         },
         {

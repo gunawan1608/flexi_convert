@@ -1,0 +1,91 @@
+{
+  "_index-DDTKYtV0.js": {
+    "file": "assets/index-DDTKYtV0.js",
+    "name": "index",
+    "imports": [
+      "_jsx-runtime-BEH-R10R.js"
+    ]
+  },
+  "_jsx-runtime-BEH-R10R.js": {
+    "file": "assets/jsx-runtime-BEH-R10R.js",
+    "name": "jsx-runtime"
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-DjPkVx6f.css",
+    "src": "resources/css/app.css",
+    "isEntry": true,
+    "names": [
+      "app.css"
+    ]
+  },
+  "resources/js/app.js": {
+    "file": "assets/app-BcRdwIVa.js",
+    "name": "app",
+    "src": "resources/js/app.js",
+    "isEntry": true,
+    "imports": [
+      "_jsx-runtime-BEH-R10R.js"
+    ],
+    "css": [
+      "assets/app-DjPkVx6f.css"
+    ]
+  },
+  "resources/js/audio-converter.js": {
+    "file": "assets/audio-converter-Ceywq5F4.js",
+    "name": "audio-converter",
+    "src": "resources/js/audio-converter.js",
+    "isEntry": true,
+    "imports": [
+      "_jsx-runtime-BEH-R10R.js",
+      "_index-DDTKYtV0.js"
+    ]
+  },
+  "resources/js/document-converter.js": {
+    "file": "assets/document-converter-42Gm2krc.js",
+    "name": "document-converter",
+    "src": "resources/js/document-converter.js",
+    "isEntry": true,
+    "imports": [
+      "_jsx-runtime-BEH-R10R.js",
+      "_index-DDTKYtV0.js"
+    ]
+  },
+  "resources/js/history.js": {
+    "file": "assets/history-CSp4QU9-.js",
+    "name": "history",
+    "src": "resources/js/history.js",
+    "isEntry": true,
+    "imports": [
+      "_jsx-runtime-BEH-R10R.js"
+    ]
+  },
+  "resources/js/image-converter.js": {
+    "file": "assets/image-converter-DN41ZIxz.js",
+    "name": "image-converter",
+    "src": "resources/js/image-converter.js",
+    "isEntry": true,
+    "imports": [
+      "_jsx-runtime-BEH-R10R.js",
+      "_index-DDTKYtV0.js"
+    ]
+  },
+  "resources/js/profile.js": {
+    "file": "assets/profile-DBlTHa5a.js",
+    "name": "profile",
+    "src": "resources/js/profile.js",
+    "isEntry": true,
+    "imports": [
+      "_jsx-runtime-BEH-R10R.js"
+    ]
+  },
+  "resources/js/video-converter.js": {
+    "file": "assets/video-converter-BBJlpt0t.js",
+    "name": "video-converter",
+    "src": "resources/js/video-converter.js",
+    "isEntry": true,
+    "imports": [
+      "_jsx-runtime-BEH-R10R.js",
+      "_index-DDTKYtV0.js"
+    ]
+  }
+}

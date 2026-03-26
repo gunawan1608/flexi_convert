@@ -15,7 +15,6 @@ return Application::configure(basePath: dirname(__DIR__))
         // Remove Sanctum middleware since it's not installed
         $middleware->api(prepend: [
             // \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-            // \App\Http\Middleware\ForceJsonResponse::class,
         ]);
         
         // $middleware->alias([

@@ -10,7 +10,13 @@ This project now uses Gotenberg as the primary engine for supported document and
    docker compose up -d gotenberg
    ```
 
-2. Ensure these environment variables exist:
+2. Check health:
+
+   ```bash
+   curl http://127.0.0.1:3000/health
+   ```
+
+3. Ensure these environment variables exist:
 
    ```env
    ENGINE_OFFICE_TO_PDF=gotenberg
@@ -29,17 +35,30 @@ This project now uses Gotenberg as the primary engine for supported document and
 - HTML to PDF
 - Merge PDF
 - Split PDF
-- Compress PDF
 
-## Flows still using legacy/manual processing
+## Flows removed from Gotenberg-only mode
 
-- PDF to Word
-- PDF to Excel
-- PDF to PowerPoint
+- PDF to Word / Excel / PowerPoint
 - PDF to Image
+- Compress PDF
 - Rotate PDF
 - Add watermark
 - Add page numbers
+
+## Custom fonts
+
+If a source document depends on specific fonts, place the `.ttf` or `.otf` files in:
+
+```text
+docker/gotenberg/fonts/
+```
+
+Then rebuild the image:
+
+```bash
+docker compose build gotenberg
+docker compose up -d gotenberg
+```
 
 ## Important limitation
 

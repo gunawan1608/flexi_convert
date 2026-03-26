@@ -85,32 +85,8 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/{id}', [App\Http\Controllers\ConversionController::class, 'delete'])->name('delete');
     });
     
-    // PDF Tools API routes
-    Route::prefix('api/pdf-tools')->name('pdf-tools.')->group(function () {
-        Route::post('/process', [App\Http\Controllers\PDFToolsController::class, 'process'])->name('process');
-        Route::get('/download/{id}', [App\Http\Controllers\PDFToolsController::class, 'download'])->name('download');
-    });
-    
     // Document conversion routes (now handled by PDFToolsController)
     Route::get('/documents/download/{id}', [App\Http\Controllers\PDFToolsController::class, 'download'])->name('documents.download');
-    
-    // Image Tools API routes
-    Route::prefix('api/image-tools')->name('image-tools.')->group(function () {
-        Route::post('/process', [App\Http\Controllers\ImageToolsController::class, 'process'])->name('process');
-        Route::get('/download/{id}', [App\Http\Controllers\ImageToolsController::class, 'download'])->name('download');
-    });
-    
-    // Audio Tools API routes
-    Route::prefix('api/audio-tools')->name('audio-tools.')->group(function () {
-        Route::post('/process', [App\Http\Controllers\AudioToolsController::class, 'process'])->name('process');
-        Route::get('/download/{id}', [App\Http\Controllers\AudioToolsController::class, 'download'])->name('download');
-    });
-    
-    // Video Tools API routes
-    Route::prefix('api/video-tools')->name('video-tools.')->group(function () {
-        Route::post('/process', [App\Http\Controllers\VideoToolsController::class, 'process'])->name('process');
-        Route::get('/download/{id}', [App\Http\Controllers\VideoToolsController::class, 'download'])->name('download');
-    });
     
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 });
