@@ -60,13 +60,13 @@ class PDFToolsTest extends TestCase
             ]);
     }
 
-    public function test_process_rejects_disabled_legacy_tool_in_gotenberg_only_mode(): void
+    public function test_process_rejects_still_disabled_legacy_pdf_tool(): void
     {
         $file = UploadedFile::fake()->create('legacy.pdf', 64, 'application/pdf');
 
         $this->withHeader('Accept', 'application/json')->post('/api/pdf-tools/process', [
             'files' => [$file],
-            'tool' => 'pdf-to-word',
+            'tool' => 'compress-pdf',
         ])->assertStatus(422)
             ->assertJson([
                 'success' => false,

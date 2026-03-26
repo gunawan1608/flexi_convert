@@ -38,14 +38,6 @@ class PDFToolsController extends Controller
         'rotate-pdf',
         'add-watermark',
         'add-page-numbers',
-        'pdf-to-word',
-        'pdf-to-docx',
-        'pdf-to-excel',
-        'pdf-to-xlsx',
-        'pdf-to-ppt',
-        'pdf-to-powerpoint',
-        'pdf-to-jpg',
-        'pdf-to-image',
     ];
 
     public function __construct(private GotenbergService $gotenberg)
@@ -162,12 +154,24 @@ class PDFToolsController extends Controller
             case 'word-to-pdf':
             case 'docx-to-pdf':
                 return $this->wordToPdf($files[0], $settings);
+            case 'pdf-to-word':
+            case 'pdf-to-docx':
+                return $this->pdfToWord($files[0], $settings);
             case 'excel-to-pdf':
             case 'xlsx-to-pdf':
                 return $this->excelToPdf($files[0], $settings);
+            case 'pdf-to-excel':
+            case 'pdf-to-xlsx':
+                return $this->pdfToExcel($files[0], $settings);
             case 'ppt-to-pdf':
             case 'powerpoint-to-pdf':
                 return $this->powerpointToPdf($files[0], $settings);
+            case 'pdf-to-ppt':
+            case 'pdf-to-powerpoint':
+                return $this->pdfToPowerpoint($files[0], $settings);
+            case 'pdf-to-jpg':
+            case 'pdf-to-image':
+                return $this->pdfToImage($files[0], $settings);
             case 'html-to-pdf':
                 return $this->htmlToPdf($files[0], $settings);
             default:
@@ -340,6 +344,14 @@ class PDFToolsController extends Controller
             'image-to-pdf' => ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff'],
             'jpg-to-pdf' => ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff'],
             'images-to-pdf' => ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff'],
+            'pdf-to-word' => ['pdf'],
+            'pdf-to-docx' => ['pdf'],
+            'pdf-to-excel' => ['pdf'],
+            'pdf-to-xlsx' => ['pdf'],
+            'pdf-to-ppt' => ['pdf'],
+            'pdf-to-powerpoint' => ['pdf'],
+            'pdf-to-jpg' => ['pdf'],
+            'pdf-to-image' => ['pdf'],
             'merge-pdf' => ['pdf'],
             'split-pdf' => ['pdf'],
             'html-to-pdf' => ['html', 'htm']
@@ -574,7 +586,7 @@ class PDFToolsController extends Controller
             
             $processing = PdfProcessing::create([
                 'user_id' => $this->currentUserId(),
-                'tool_name' => 'pdf-to-' . $format,
+                'tool_name' => request()->input('tool', 'pdf-to-' . $format),
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
                 'file_size' => $file->getSize(),
@@ -783,7 +795,7 @@ class PDFToolsController extends Controller
             
             $processing = PdfProcessing::create([
                 'user_id' => $this->currentUserId(),
-                'tool_name' => 'pdf-to-word',
+                'tool_name' => request()->input('tool', 'pdf-to-word'),
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
                 'file_size' => $file->getSize(),
@@ -890,7 +902,7 @@ class PDFToolsController extends Controller
 
             $processing = PdfProcessing::create([
                 'user_id' => $this->currentUserId(),
-                'tool_name' => 'pdf-to-excel',
+                'tool_name' => request()->input('tool', 'pdf-to-excel'),
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
                 'file_size' => $file->getSize(),
@@ -990,7 +1002,7 @@ class PDFToolsController extends Controller
 
             $processing = PdfProcessing::create([
                 'user_id' => $this->currentUserId(),
-                'tool_name' => 'pdf-to-powerpoint',
+                'tool_name' => request()->input('tool', 'pdf-to-powerpoint'),
                 'original_filename' => $file->getClientOriginalName(),
                 'processed_filename' => $outputFileName,
                 'file_size' => $file->getSize(),
@@ -1189,8 +1201,8 @@ class PDFToolsController extends Controller
     {
         if (in_array($tool, self::DISABLED_LEGACY_TOOLS, true)) {
             throw ValidationException::withMessages([
-                'tool' => [
-                    'Tool "' . $tool . '" tidak tersedia dalam mode Gotenberg-only. Gunakan tool yang masih didukung: Word/Excel/PPT ke PDF, Images ke PDF, HTML ke PDF, Merge PDF, atau Split PDF.',
+                    'tool' => [
+                    'Tool "' . $tool . '" saat ini belum diaktifkan. Tool yang masih dinonaktifkan: compress, rotate, watermark, dan page numbers.',
                 ],
             ]);
         }
@@ -1315,9 +1327,11 @@ class PDFToolsController extends Controller
                 return $cleanBaseName . '.pdf';
             
             case 'pdf-to-word':
+            case 'pdf-to-docx':
                 return $cleanBaseName . '.docx';
             
             case 'pdf-to-excel':
+            case 'pdf-to-xlsx':
                 return $cleanBaseName . '.xlsx';
             
             case 'pdf-to-ppt':
