@@ -10,8 +10,14 @@ return [
     |
     */
 
-    // Primary engine for Office to PDF conversion
-    'office_to_pdf_engine' => env('ENGINE_OFFICE_TO_PDF', 'libreoffice'),
+    // Primary engine for document/PDF conversion
+    'office_to_pdf_engine' => env('ENGINE_OFFICE_TO_PDF', 'gotenberg'),
+
+    // Gotenberg configuration
+    'gotenberg' => [
+        'url' => env('GOTENBERG_URL', 'http://127.0.0.1:3000'),
+        'timeout' => env('GOTENBERG_TIMEOUT', 120),
+    ],
 
     // LibreOffice configuration
     'libreoffice' => [

@@ -50,3 +50,13 @@ FlexiConvert aims to support **students, office workers, and digital creators** 
    ```bash
    git clone https://github.com/your-username/flexiconvert.git
    cd flexiconvert
+
+## Gotenberg Setup
+
+Run the bundled Compose service before testing document conversions:
+
+```bash
+docker compose up -d gotenberg
+```
+
+See `README-GOTENBERG.md` for details about supported flows and environment variables.

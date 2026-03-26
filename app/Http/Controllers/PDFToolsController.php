@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use App\Models\PdfProcessing;
+use App\Services\GotenbergService;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Exception;
@@ -17,6 +18,10 @@ use App\Http\Controllers\PDFToolsHelperMethods;
 
 class PDFToolsController extends Controller
 {
+    public function __construct(private GotenbergService $gotenberg)
+    {
+    }
+
     /**
      * Main entry point for all PDF tools processing
      * 
@@ -135,7 +140,7 @@ class PDFToolsController extends Controller
             case 'pdf-to-powerpoint':
                 return $this->pdfToPowerpoint($files[0], $settings);
             case 'html-to-pdf':
-                return PDFToolsHelperMethods::convertHtmlToPdf($files[0], $settings);
+                return $this->htmlToPdf($files[0], $settings);
             default:
                 throw new Exception('Unsupported tool: ' . $tool);
         }
@@ -151,7 +156,13 @@ class PDFToolsController extends Controller
     private function wordToPdf($file, $settings = [])
     {
         try {
-            return PDFToolsHelperMethods::processWordToPdf($file, $settings);
+            return $this->convertOfficeDocumentToPdf(
+                $file,
+                'word-to-pdf',
+                'word_to_pdf_',
+                'Word berhasil dikonversi ke PDF',
+                $settings
+            );
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
@@ -169,9 +180,50 @@ class PDFToolsController extends Controller
      */
     private function compressPdf($file, $settings = [])
     {
+        $processing = null;
+
         try {
-            return PDFToolsHelperMethods::processCompressPdf($file, $settings);
+            $inputPath = $file->store(config('pdftools.storage.uploads_path'));
+            $fullInputPath = Storage::path($inputPath);
+
+            $outputFileName = 'compressed_pdf_' . Str::uuid() . '.pdf';
+            $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
+
+            $processing = PdfProcessing::create([
+                'user_id' => auth()->id(),
+                'tool_name' => 'compress-pdf',
+                'original_filename' => $file->getClientOriginalName(),
+                'processed_filename' => $outputFileName,
+                'file_size' => $file->getSize(),
+                'status' => 'processing',
+                'progress' => 0,
+                'settings' => json_encode($settings),
+            ]);
+
+            $result = $this->gotenberg->compressPdf($fullInputPath, array_merge($settings, [
+                'output_filename' => $outputFileName,
+            ]));
+
+            $this->storeGotenbergResult($result, $outputPath, [$inputPath]);
+
+            $processing->update([
+                'status' => 'completed',
+                'progress' => 100,
+                'processed_file_size' => Storage::size($outputPath),
+                'completed_at' => now(),
+            ]);
+
+            return PDFToolsHelperMethods::createSuccessResponse(
+                'PDF berhasil dikompres',
+                $processing->id,
+                $outputFileName,
+                route('pdf-tools.download', $processing->id)
+            );
         } catch (Exception $e) {
+            if ($processing) {
+                $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'PDF compression failed: ' . $e->getMessage()
@@ -207,9 +259,52 @@ class PDFToolsController extends Controller
      */
     private function splitPdf($file, $settings = [])
     {
+        $processing = null;
+
         try {
-            return PDFToolsHelperMethods::processSplitPdf($file, $settings);
+            $inputPath = $file->store(config('pdftools.storage.uploads_path'));
+            $fullInputPath = Storage::path($inputPath);
+
+            $splitOptions = $this->mapSplitSettings($settings);
+            $outputExtension = !empty($splitOptions['splitUnify']) ? 'pdf' : 'zip';
+            $outputFileName = 'split_pdf_' . Str::uuid() . '.' . $outputExtension;
+            $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
+
+            $processing = PdfProcessing::create([
+                'user_id' => auth()->id(),
+                'tool_name' => 'split-pdf',
+                'original_filename' => $file->getClientOriginalName(),
+                'processed_filename' => $outputFileName,
+                'file_size' => $file->getSize(),
+                'status' => 'processing',
+                'progress' => 0,
+                'settings' => json_encode($settings),
+            ]);
+
+            $result = $this->gotenberg->splitPdf($fullInputPath, array_merge($splitOptions, [
+                'output_filename' => $outputFileName,
+            ]));
+
+            $this->storeGotenbergResult($result, $outputPath, [$inputPath]);
+
+            $processing->update([
+                'status' => 'completed',
+                'progress' => 100,
+                'processed_file_size' => Storage::size($outputPath),
+                'completed_at' => now(),
+            ]);
+
+            return PDFToolsHelperMethods::createSuccessResponse(
+                'PDF berhasil dipisahkan',
+                $processing->id,
+                $outputFileName,
+                route('pdf-tools.download', $processing->id)
+            );
         } catch (Exception $e) {
+            if ($processing) {
+                $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'PDF split failed: ' . $e->getMessage()
@@ -226,9 +321,53 @@ class PDFToolsController extends Controller
      */
     private function mergePdfs($files, $settings = [])
     {
+        $processing = null;
+        $storedInputPaths = [];
+
         try {
-            return PDFToolsHelperMethods::processMergePdfs($files, $settings);
+            $outputFileName = 'merged_pdf_' . Str::uuid() . '.pdf';
+            $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
+
+            $processing = PdfProcessing::create([
+                'user_id' => auth()->id(),
+                'tool_name' => 'merge-pdf',
+                'original_filename' => count($files) . ' PDF files',
+                'processed_filename' => $outputFileName,
+                'file_size' => array_sum(array_map(fn($uploadedFile) => $uploadedFile->getSize(), $files)),
+                'status' => 'processing',
+                'progress' => 0,
+                'settings' => json_encode($settings),
+            ]);
+
+            $gotenbergFiles = $this->prepareFilesForOrderedMerge($files, $storedInputPaths, $settings['mergeOrder'] ?? 'upload');
+            $result = $this->gotenberg->mergePdfs($gotenbergFiles, [
+                'output_filename' => $outputFileName,
+            ]);
+
+            $this->storeGotenbergResult($result, $outputPath, $storedInputPaths);
+
+            $processing->update([
+                'status' => 'completed',
+                'progress' => 100,
+                'processed_file_size' => Storage::size($outputPath),
+                'completed_at' => now(),
+            ]);
+
+            return PDFToolsHelperMethods::createSuccessResponse(
+                'PDF berhasil digabungkan',
+                $processing->id,
+                $outputFileName,
+                route('pdf-tools.download', $processing->id)
+            );
         } catch (Exception $e) {
+            foreach ($storedInputPaths as $storedInputPath) {
+                Storage::delete($storedInputPath);
+            }
+
+            if ($processing) {
+                $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'PDF merge failed: ' . $e->getMessage()
@@ -379,111 +518,52 @@ class PDFToolsController extends Controller
      */
     private function imageToPdf($files, $settings = [])
     {
+        $processing = null;
+        $storedInputPaths = [];
+
         try {
             $outputFileName = 'images_to_pdf_' . time() . '.pdf';
-            $outputPath = 'pdf-tools/outputs/' . $outputFileName;
-            
-            // Get first file name for display
+            $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
+
             $firstFileName = $files[0]->getClientOriginalName();
             $fileCount = count($files);
-            $displayName = $fileCount > 1 ? $firstFileName . " (+ " . ($fileCount - 1) . " more)" : $firstFileName;
-            
-            // Determine the correct tool name based on the actual tool being used
+            $displayName = $fileCount > 1 ? $firstFileName . ' (+ ' . ($fileCount - 1) . ' more)' : $firstFileName;
             $toolName = request()->input('tool', 'image-to-pdf');
-            
-            // Create database record
+
             $processing = PdfProcessing::create([
                 'user_id' => auth()->id() ?? 1,
                 'tool_name' => $toolName,
                 'original_filename' => $displayName,
                 'processed_filename' => $outputFileName,
-                'file_size' => array_sum(array_map(fn($f) => $f->getSize(), $files)),
+                'file_size' => array_sum(array_map(fn($uploadedFile) => $uploadedFile->getSize(), $files)),
                 'status' => 'processing',
                 'progress' => 0,
                 'settings' => json_encode($settings),
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
 
-            // Enhanced implementation with professional quality settings
-            $pageSize = $settings['pageSize'] ?? 'A4';
-            $orientation = $settings['orientation'] ?? 'portrait';
-            $margin = intval($settings['margin'] ?? 10);
-            $imageSize = $settings['imageSize'] ?? 'fit';
-            $quality = intval($settings['quality'] ?? 95);
-            
-            // Create professional PDF using FPDF with image optimization
-            $pdf = new \setasign\Fpdi\Fpdi();
-            
-            foreach ($files as $index => $file) {
-                $tempPath = $file->store('temp');
-                $fullPath = Storage::path($tempPath);
-                
-                // Get image dimensions and optimize
-                $imageInfo = getimagesize($fullPath);
-                if (!$imageInfo) {
-                    continue; // Skip invalid images
-                }
-                
-                $imageWidth = $imageInfo[0];
-                $imageHeight = $imageInfo[1];
-                $imageType = $imageInfo[2];
-                
-                // Add new page
-                $pdf->AddPage($orientation, $pageSize);
-                
-                // Calculate page dimensions in mm
-                $pageWidth = $pdf->GetPageWidth();
-                $pageHeight = $pdf->GetPageHeight();
-                $usableWidth = $pageWidth - ($margin * 2);
-                $usableHeight = $pageHeight - ($margin * 2);
-                
-                // Calculate image placement for maximum quality
-                $aspectRatio = $imageWidth / $imageHeight;
-                $pageAspectRatio = $usableWidth / $usableHeight;
-                
-                if ($imageSize === 'fit') {
-                    if ($aspectRatio > $pageAspectRatio) {
-                        // Image is wider - fit to width
-                        $displayWidth = $usableWidth;
-                        $displayHeight = $usableWidth / $aspectRatio;
-                    } else {
-                        // Image is taller - fit to height
-                        $displayHeight = $usableHeight;
-                        $displayWidth = $usableHeight * $aspectRatio;
-                    }
-                } else {
-                    // Fill page
-                    $displayWidth = $usableWidth;
-                    $displayHeight = $usableHeight;
-                }
-                
-                // Center the image
-                $x = $margin + ($usableWidth - $displayWidth) / 2;
-                $y = $margin + ($usableHeight - $displayHeight) / 2;
-                
-                // Add image with high quality
-                try {
-                    $pdf->Image($fullPath, $x, $y, $displayWidth, $displayHeight);
-                } catch (Exception $e) {
-                    Log::warning('Failed to add image to PDF: ' . $e->getMessage());
-                    continue;
-                }
-                
-                // Clean up temp file
-                Storage::delete($tempPath);
+            $gotenbergFiles = [];
+            foreach ($files as $index => $uploadedFile) {
+                $storedPath = $uploadedFile->store(config('pdftools.storage.uploads_path'));
+                $storedInputPaths[] = $storedPath;
+                $gotenbergFiles[] = [
+                    'path' => Storage::path($storedPath),
+                    'filename' => sprintf('%03d_%s', $index + 1, $uploadedFile->getClientOriginalName()),
+                ];
             }
-            
-            // Save the PDF
-            $finalPath = Storage::path($outputPath);
-            $pdf->Output($finalPath, 'F');
-            
-            // Update processing status
+
+            $result = $this->gotenberg->imagesToPdf($gotenbergFiles, array_merge($settings, [
+                'output_filename' => $outputFileName,
+            ]));
+
+            $this->storeGotenbergResult($result, $outputPath, $storedInputPaths);
+
             $processing->update([
                 'status' => 'completed',
                 'progress' => 100,
-                'processed_file_size' => filesize($finalPath),
-                'completed_at' => now()
+                'processed_file_size' => Storage::size($outputPath),
+                'completed_at' => now(),
             ]);
 
             return PDFToolsHelperMethods::createSuccessResponse(
@@ -492,13 +572,77 @@ class PDFToolsController extends Controller
                 $outputFileName,
                 route('pdf-tools.download', $processing->id)
             );
-
         } catch (\Exception $e) {
-            if (isset($processing)) {
+            foreach ($storedInputPaths as $storedInputPath) {
+                Storage::delete($storedInputPath);
+            }
+
+            if ($processing) {
                 $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
             }
-            Log::error("Image to PDF conversion failed: " . $e->getMessage());
+
+            Log::error('Image to PDF conversion failed: ' . $e->getMessage());
+
             return response()->json(['error' => true, 'message' => 'Konversi gagal: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Convert HTML to PDF with Gotenberg Chromium.
+     */
+    private function htmlToPdf($file, $settings = [])
+    {
+        $processing = null;
+
+        try {
+            $inputPath = $file->store(config('pdftools.storage.uploads_path'));
+            $fullInputPath = Storage::path($inputPath);
+
+            $outputFileName = 'html_to_pdf_' . Str::uuid() . '.pdf';
+            $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
+
+            $processing = PdfProcessing::create([
+                'user_id' => auth()->id(),
+                'tool_name' => 'html-to-pdf',
+                'original_filename' => $file->getClientOriginalName(),
+                'processed_filename' => $outputFileName,
+                'file_size' => $file->getSize(),
+                'status' => 'processing',
+                'progress' => 0,
+                'settings' => json_encode($settings),
+            ]);
+
+            $result = $this->gotenberg->htmlFileToPdf($fullInputPath, array_merge($settings, [
+                'printBackground' => true,
+                'output_filename' => $outputFileName,
+            ]));
+
+            $this->storeGotenbergResult($result, $outputPath, [$inputPath]);
+
+            $processing->update([
+                'status' => 'completed',
+                'progress' => 100,
+                'processed_file_size' => Storage::size($outputPath),
+                'completed_at' => now(),
+            ]);
+
+            return PDFToolsHelperMethods::createSuccessResponse(
+                'HTML berhasil dikonversi ke PDF',
+                $processing->id,
+                $outputFileName,
+                route('pdf-tools.download', $processing->id)
+            );
+        } catch (\Exception $e) {
+            if ($processing) {
+                $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+            }
+
+            Log::error('HTML to PDF conversion failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'HTML to PDF conversion failed: ' . $e->getMessage(),
+            ], 500);
         }
     }
 
@@ -803,51 +947,15 @@ class PDFToolsController extends Controller
      */
     private function excelToPdf($file, $settings = [])
     {
-        $processing = null;
         try {
-            $inputPath = $file->store('pdf-tools/uploads');
-            $fullInputPath = Storage::path($inputPath);
-            
-            $outputFileName = 'excel_to_pdf_' . Str::uuid() . '.pdf';
-            $outputPath = 'pdf-tools/outputs/' . $outputFileName;
-            
-            $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
-                'tool_name' => 'excel-to-pdf',
-                'original_filename' => $file->getClientOriginalName(),
-                'processed_filename' => $outputFileName,
-                'file_size' => $file->getSize(),
-                'status' => 'processing',
-                'progress' => 0,
-                'settings' => json_encode($settings)
-            ]);
-
-            // Use the same reliable conversion method as Word to PDF
-            $outputDir = Storage::path('pdf-tools/outputs');
-            if (!is_dir($outputDir)) {
-                mkdir($outputDir, 0755, true);
-            }
-
-            $convertedPdfPath = PDFToolsHelperMethods::convertWithLibreOffice($fullInputPath, $outputDir);
-            
-            $finalPath = Storage::path($outputPath);
-            rename($convertedPdfPath, $finalPath);
-            Storage::delete($inputPath);
-            
-            $processing->update([
-                'status' => 'completed',
-                'progress' => 100,
-                'processed_file_size' => filesize($finalPath),
-                'completed_at' => now()
-            ]);
-
-            return PDFToolsHelperMethods::createSuccessResponse('Excel berhasil dikonversi ke PDF', $processing->id, $outputFileName, route('pdf-tools.download', $processing->id));
-
+            return $this->convertOfficeDocumentToPdf(
+                $file,
+                'excel-to-pdf',
+                'excel_to_pdf_',
+                'Excel berhasil dikonversi ke PDF',
+                $settings
+            );
         } catch (\Exception $e) {
-            if ($processing) {
-                $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
-            }
-            Log::error("Excel to PDF conversion failed: " . $e->getMessage());
             return response()->json([
                 'error' => true,
                 'message' => 'Konversi Excel ke PDF gagal: ' . $e->getMessage()
@@ -939,51 +1047,15 @@ class PDFToolsController extends Controller
      */
     private function powerpointToPdf($file, $settings = [])
     {
-        $processing = null;
         try {
-            $inputPath = $file->store('pdf-tools/uploads');
-            $fullInputPath = Storage::path($inputPath);
-            
-            $outputFileName = 'powerpoint_to_pdf_' . Str::uuid() . '.pdf';
-            $outputPath = 'pdf-tools/outputs/' . $outputFileName;
-            
-            $processing = PdfProcessing::create([
-                'user_id' => auth()->id(),
-                'tool_name' => 'powerpoint-to-pdf',
-                'original_filename' => $file->getClientOriginalName(),
-                'processed_filename' => $outputFileName,
-                'file_size' => $file->getSize(),
-                'status' => 'processing',
-                'progress' => 0,
-                'settings' => json_encode($settings)
-            ]);
-
-            // Use the same reliable conversion method as Word to PDF
-            $outputDir = Storage::path('pdf-tools/outputs');
-            if (!is_dir($outputDir)) {
-                mkdir($outputDir, 0755, true);
-            }
-
-            $convertedPdfPath = PDFToolsHelperMethods::convertWithLibreOffice($fullInputPath, $outputDir);
-            
-            $finalPath = Storage::path($outputPath);
-            rename($convertedPdfPath, $finalPath);
-            Storage::delete($inputPath);
-            
-            $processing->update([
-                'status' => 'completed',
-                'progress' => 100,
-                'processed_file_size' => filesize($finalPath),
-                'completed_at' => now()
-            ]);
-
-            return PDFToolsHelperMethods::createSuccessResponse('PowerPoint berhasil dikonversi ke PDF', $processing->id, $outputFileName, route('pdf-tools.download', $processing->id));
-
+            return $this->convertOfficeDocumentToPdf(
+                $file,
+                'powerpoint-to-pdf',
+                'powerpoint_to_pdf_',
+                'PowerPoint berhasil dikonversi ke PDF',
+                $settings
+            );
         } catch (\Exception $e) {
-            if ($processing) {
-                $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
-            }
-            Log::error("PowerPoint to PDF conversion failed: " . $e->getMessage());
             return response()->json([
                 'error' => true,
                 'message' => 'Konversi PowerPoint ke PDF gagal: ' . $e->getMessage()
@@ -1068,6 +1140,140 @@ class PDFToolsController extends Controller
                 'message' => 'Konversi PDF ke PowerPoint gagal: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    private function convertOfficeDocumentToPdf($file, string $toolName, string $outputPrefix, string $successMessage, array $settings = [])
+    {
+        $processing = null;
+
+        try {
+            $inputPath = $file->store(config('pdftools.storage.uploads_path'));
+            $fullInputPath = Storage::path($inputPath);
+
+            $outputFileName = $outputPrefix . Str::uuid() . '.pdf';
+            $outputPath = config('pdftools.storage.outputs_path') . '/' . $outputFileName;
+
+            $processing = PdfProcessing::create([
+                'user_id' => auth()->id(),
+                'tool_name' => $toolName,
+                'original_filename' => $file->getClientOriginalName(),
+                'processed_filename' => $outputFileName,
+                'file_size' => $file->getSize(),
+                'status' => 'processing',
+                'progress' => 0,
+                'settings' => json_encode($settings),
+            ]);
+
+            $result = $this->gotenberg->officeToPdf([[
+                'path' => $fullInputPath,
+                'filename' => $file->getClientOriginalName(),
+            ]], array_merge($settings, [
+                'output_filename' => $outputFileName,
+            ]));
+
+            $this->storeGotenbergResult($result, $outputPath, [$inputPath]);
+
+            $processing->update([
+                'status' => 'completed',
+                'progress' => 100,
+                'processed_file_size' => Storage::size($outputPath),
+                'completed_at' => now(),
+            ]);
+
+            return PDFToolsHelperMethods::createSuccessResponse(
+                $successMessage,
+                $processing->id,
+                $outputFileName,
+                route('pdf-tools.download', $processing->id)
+            );
+        } catch (\Exception $e) {
+            if ($processing) {
+                $processing->update(['status' => 'failed', 'error_message' => $e->getMessage()]);
+            }
+
+            Log::error($toolName . ' conversion failed: ' . $e->getMessage());
+
+            throw $e;
+        }
+    }
+
+    private function storeGotenbergResult(array $result, string $storageOutputPath, array $cleanupStoragePaths = []): void
+    {
+        try {
+            Storage::put($storageOutputPath, file_get_contents($result['path']));
+        } finally {
+            if (!empty($result['path']) && file_exists($result['path'])) {
+                @unlink($result['path']);
+            }
+
+            foreach ($cleanupStoragePaths as $cleanupStoragePath) {
+                Storage::delete($cleanupStoragePath);
+            }
+        }
+    }
+
+    private function prepareFilesForOrderedMerge(array $files, array &$storedInputPaths, string $mergeOrder = 'upload'): array
+    {
+        $items = [];
+
+        foreach ($files as $index => $file) {
+            $storedPath = $file->store(config('pdftools.storage.uploads_path'));
+            $storedInputPaths[] = $storedPath;
+
+            $items[] = [
+                'path' => Storage::path($storedPath),
+                'original_filename' => $file->getClientOriginalName(),
+                'sort_index' => $index + 1,
+            ];
+        }
+
+        if ($mergeOrder === 'name') {
+            usort($items, fn($left, $right) => strcasecmp($left['original_filename'], $right['original_filename']));
+        }
+
+        foreach ($items as $index => &$item) {
+            $item['filename'] = sprintf('%03d_%s', $index + 1, $item['original_filename']);
+            unset($item['original_filename'], $item['sort_index']);
+        }
+        unset($item);
+
+        return $items;
+    }
+
+    private function mapSplitSettings(array $settings): array
+    {
+        $mode = $settings['splitMode'] ?? null;
+
+        if ($mode === 'range') {
+            $startPage = (int) ($settings['startPage'] ?? 0);
+            $endPage = (int) ($settings['endPage'] ?? 0);
+
+            if ($startPage < 1 || $endPage < $startPage) {
+                throw new Exception('Rentang halaman untuk split PDF tidak valid.');
+            }
+
+            return [
+                'splitMode' => 'pages',
+                'splitSpan' => $startPage . '-' . $endPage,
+                'splitUnify' => true,
+            ];
+        }
+
+        if ($mode === 'interval') {
+            $interval = (int) ($settings['interval'] ?? 0);
+
+            if ($interval < 1) {
+                throw new Exception('Interval split PDF harus lebih besar dari 0.');
+            }
+
+            return [
+                'splitMode' => 'intervals',
+                'splitSpan' => (string) $interval,
+                'splitUnify' => false,
+            ];
+        }
+
+        throw new Exception('Mode split PDF belum dipilih.');
     }
 
     /**

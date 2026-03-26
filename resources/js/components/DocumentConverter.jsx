@@ -374,9 +374,9 @@ const DocumentConverter = () => {
                 }
             }
 
-            // Ensure the filename has the correct extension based on the tool
+            // Only force an extension for deterministic format-conversion tools.
             if (selectedTool) {
-                let fileExtension = 'pdf'; // default
+                let fileExtension = null;
                 
                 if (selectedTool.id.startsWith('pdf-to-')) {
                     fileExtension = selectedTool.id.split('-').pop();
@@ -385,8 +385,7 @@ const DocumentConverter = () => {
                     fileExtension = 'pdf';
                 }
                 
-                // Remove any existing extension and add the correct one
-                if (!downloadFilename.endsWith(`.${fileExtension}`)) {
+                if (fileExtension && !downloadFilename.endsWith(`.${fileExtension}`)) {
                     downloadFilename = downloadFilename.replace(/\.[^/.]+$/, '') + `.${fileExtension}`;
                 }
             }
